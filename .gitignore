@@ -1,0 +1,10 @@
+venv/
+.venv/
+.vscode
+
+**/__pycache__
+
+**/model_weights
+**/zobrist
+**/data
+*.prof
