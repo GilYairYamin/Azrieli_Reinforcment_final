@@ -2,6 +2,8 @@ import os
 import pandas as pd
 import numpy as np
 import torch
+
+
 from abalone import TECHNIAL_MOVE_AMOUNT, Abalone
 
 
@@ -59,7 +61,9 @@ def build_training_data():
         curr_size = data_snippet.shape[0]
         for idx, row in np_data.iterrows():
             curr_idx = idx + curr_size
-            board_state, legal_move_mask, policy, value = decode_board_state(row)
+            board_state, legal_move_mask, policy, value = decode_board_state(
+                row
+            )
             data_snippet.loc[curr_idx, "board_state"] = board_state
             data_snippet.loc[curr_idx, "legal_move_mask"] = legal_move_mask
             data_snippet.loc[curr_idx, "policy"] = policy

@@ -78,8 +78,7 @@ class AbaloneNetwork(nn.Module):
         )
 
         policy = self.softmax(policy_logits).flatten()
-        value = self.tanh(self.value_head(x)).item()
-
+        value = self.tanh(self.value_head(x))
         return policy, value
 
     def save_model(self):
@@ -87,7 +86,6 @@ class AbaloneNetwork(nn.Module):
         os.makedirs(self.SNAPSHOTS_DIR_PATH, exist_ok=True)
 
         torch.save(self.state_dict(), self.WEIGHTS_FILE_PATH)
-
         current_time = datetime.now().strftime("%Y.%m.%d_%H:%M:%S")
         snapshot_name = f"weights_{current_time}.pth"
         file_path = os.path.join(self.SNAPSHOTS_DIR_PATH, snapshot_name)
