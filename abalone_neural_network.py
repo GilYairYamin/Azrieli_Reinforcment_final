@@ -8,6 +8,20 @@ import torch.nn as nn
 from abalone import Abalone, TECHNIAL_MOVE_AMOUNT, VALID_BOARD_MASK
 
 
+def convert_encoded_board_to_tensors(board_state):
+    board, player, black_captures, white_captures = board_state
+
+    board_tensor = torch.tensor(board)
+    board_tensor = board_tensor.unsqueeze(0)
+
+    extra_tensor = torch.tensor(
+        [player, black_captures, white_captures],
+        device=board_tensor.device,
+    ).unsqueeze(0)
+
+    return board_tensor, extra_tensor
+
+
 class AbaloneNetwork(nn.Module):
     CURR_DIR_PATH = os.path.join(os.getcwd(), "local_data")
     WEIGHTS_DIR_PATH = os.path.join(CURR_DIR_PATH, "model_weights")
@@ -37,15 +51,7 @@ class AbaloneNetwork(nn.Module):
         if load_model:
             self.load_model()
 
-    def forward(self, game: Abalone):
-        (board, player, black_captures, white_captures) = game.encode()
-
-        x = torch.tensor(
-            board, device=next(self.parameters()).device, dtype=torch.float32
-        )
-
-        x = x.unsqueeze(0)
-
+    def forward(self, board, extra):
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
 
@@ -55,13 +61,8 @@ class AbaloneNetwork(nn.Module):
         x = x.flatten(start_dim=1)
         x = self.relu(self.fc1(x))
 
-        extra = torch.tensor(
-            [player, black_captures, white_captures],
-            device=x.device,
-        ).unsqueeze(0)
-
-        extra = extra.expand(batch_size, -1)
-        x = torch.cat([x, extra], dim=1)
+        extra_tensor = extra_tensor.expand(batch_size, -1)
+        x = torch.cat([x, extra_tensor], dim=1)
 
         x = self.relu(self.fc2(x))
         x = self.relu(self.fc3(x))
