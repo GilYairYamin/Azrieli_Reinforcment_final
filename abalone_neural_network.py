@@ -15,9 +15,7 @@ def convert_encoded_board_to_tensors(board_state, legal_moves_mask):
     board_tensor = torch.tensor(board)
     board_tensor = board_tensor.unsqueeze(0)
 
-    extra_arr = np.array(
-        [black_captures, white_captures, player], dtype=np.float32
-    )
+    extra_arr = np.array([black_captures, white_captures, player], dtype=np.float32)
     extra_tensor = torch.tensor(extra_arr, device=board_tensor.device)
     extra_tensor = extra_tensor.unsqueeze(0)
 
