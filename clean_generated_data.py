@@ -2,7 +2,8 @@ import os
 import pandas as pd
 import numpy as np
 import torch
-from abalone import TECHNIAL_MOVE_AMOUNT
+from abalone import TECHNIAL_MOVE_AMOUNT, Abalone
+
 
 from tqdm import tqdm
 
@@ -19,7 +20,9 @@ def decode_board_state(state_data):
     value = state_data["final_status"]
 
     smallest_negative = np.finfo(np.float64).min
-    policy_temp = np.full(TECHNIAL_MOVE_AMOUNT, smallest_negative, dtype=np.float64)
+    policy_temp = np.full(
+        TECHNIAL_MOVE_AMOUNT, smallest_negative, dtype=np.float64
+    )
     for index in range(len(children_move_idx)):
         child_idx = children_move_idx[index]
         policy_temp[child_idx] = children_move_Q[index]
@@ -62,7 +65,9 @@ def build_training_data():
             file_path = os.path.join(res_data_folder, file_name)
             data_snippet.to_pickle(file_path)
             name_idx += 1
-            data_snippet = pd.DataFrame(columns=["board_state", "policy", "value"])
+            data_snippet = pd.DataFrame(
+                columns=["board_state", "policy", "value"]
+            )
 
     if data_snippet.shape[0] > 0:
         file_name = f"final_data_{name_idx}.pickle"
@@ -70,4 +75,4 @@ def build_training_data():
         data_snippet.to_pickle(file_path)
 
 
-build_training_data()
+# build_training_data()
