@@ -1,5 +1,7 @@
 numba
 pandas
+tables
 numpy
 torch
 torchvision
+tqdm
