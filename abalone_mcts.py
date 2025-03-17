@@ -1,22 +1,22 @@
 import math
 import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from abalone_mcts_node import MCTSNode
-from abalone_numba import (
-    BOARD_SIZE,
-    ONGOING,
-    Abalone,
-    WHITE_WIN,
-)
-from numba import int8, int64, njit, uint64, float64
+from numba import float64, int8, int64, njit, uint64
 from numba.experimental import jitclass
 from numba.typed import Dict
 from numba.types import DictType, np_uint64
 
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from abalone import (
+    BOARD_SIZE,
+    ONGOING,
+    WHITE_WIN,
+    Abalone,
+)
+from abalone_mcts_node import MCTSNode
 
 _state_class = [
     ("child_idx", int64[:]),
@@ -161,7 +161,9 @@ def get_move_and_data(
     tree_dict[root_key] = root_node
 
     for _ in range(max_leaf_explore):
-        current_node = select(move_stack, tree_dict, game, root_key, explore_constant)
+        current_node = select(
+            move_stack, tree_dict, game, root_key, explore_constant
+        )
         current_node = expand(move_stack, tree_dict, game, current_node)
         reward = game.rollout(rollout_depth)
         propogate(move_stack, tree_dict, game, current_node, reward)

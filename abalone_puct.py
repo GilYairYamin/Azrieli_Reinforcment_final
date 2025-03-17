@@ -1,63 +1,147 @@
 import math
-import random
-import traceback
+import os
+from datetime import datetime
 
-from abalone import Abalone
+import numpy as np
+import pandas as pd
+from abalone_puct_node import PUCTNode
+from abalone import (
+    BOARD_SIZE,
+    ONGOING,
+    Abalone,
+    WHITE_WIN,
+)
+
+from numba import int8, int64, njit, uint64, float64
+from numba.experimental import jitclass
+from numba.typed import Dict
+from numba.types import DictType, np_uint64
+
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from abalone_neural_network import AbaloneNetwork
 
+_state_class = [
+    ("child_idx", int64[:]),
+    ("current_key", uint64[:]),
+    ("size", int64),
+    ("max_size", int64),
+]
 
-class PUCTNode:
-    def __init__(self, move: tuple[int, int, int], P: float):
-        self.move = move
-        self.N = 0
-        self.Q = 0
-        self.P = P
-        self.policy = None
-        self.unvisited_children: list[PUCTNode] = []
-        self.visited_children_keys: list = []
-        self.fully_expanded: bool = False
-        self.is_terminal: bool = False
 
-    def addVisit(self, addQ: int, visits: int = 1):
-        self.N += visits
-        self.Q = self.Q + (addQ - self.Q) / self.N
+@jitclass(_state_class)
+class StateClass:
+    def __init__(self):
+        self.max_size = 2000
+        self.size = 0
+        self.child_idx = np.zeros(self.max_size, dtype=np.int64)
+        self.current_key = np.zeros(self.max_size, dtype=np.uint64)
 
-    def expand(self, game: Abalone, model: AbaloneNetwork):
-        if self.fully_expanded:
-            raise Exception("tried to expand a non-leaf node")
+    def _increase_size(self):
+        old_max = int64(self.max_size)
+        self.max_size *= int64(2)
+        new_max = int64(self.max_size)
 
-        if self.is_terminal:
-            raise Exception("tried to expand a terminal node")
+        temp_child_idx = np.zeros(new_max, dtype=np.int64)
+        temp_child_idx[:old_max] = self.child_idx
+        self.child_idx = temp_child_idx
 
-        if game.status_arr != Abalone.ONGOING:
-            self.is_terminal = True
-            return
+        temp_current_key = np.zeros(new_max, dtype=np.uint64)
+        temp_current_key[:old_max] = self.current_key
+        self.current_key = temp_current_key
 
-        self.policy, self.Q = model.forward(game)
-        self.unvisited_children = [
-            PUCTNode(move, self.policy[Abalone.encode_move(move)].item())
-            for move in game.legal_moves()
-        ]
+    def add_node(self, current_key, child_idx):
+        if self.size >= self.max_size:
+            self._increase_size()
 
-        random.shuffle(self.unvisited_children)
+        new_idx = int64(self.size)
+        self.size += int64(1)
+        self.current_key[new_idx] = uint64(current_key)
+        self.child_idx[new_idx] = int64(child_idx)
 
-    def visit_child(self, game: Abalone, model: AbaloneNetwork, tree_dict: dict):
-        child = self.unvisited_children.pop()
+    def is_empty(self):
+        return self.size <= 0
 
-        if len(self.unvisited_children) <= 0:
-            self.fully_expanded = True
+    def get_size(self):
+        return self.size
 
-        game.make_move(child.move)
-        child_key = game.encode()
-        if child_key not in tree_dict:
-            child.expand(game, model)
-            tree_dict[child_key] = child
+    def pop_node(self):
+        self.size -= int64(1)
+        idx = int64(self.size)
+        current_key = self.current_key[idx]
+        child_idx = self.child_idx[idx]
+        return current_key, child_idx
 
-        self.visited_children_keys.append(child_key)
-        return child
+    def head_node(self):
+        idx = self.size - 1
+        current_key = self.current_key[idx]
+        child_idx = self.child_idx[idx]
+        return current_key, child_idx
 
-    def isLeaf(self):
-        return not self.fully_expanded or self.is_terminal
+
+@njit
+def select(
+    move_stack: StateClass,
+    tree_dict: DictType,
+    game: Abalone,
+    root_key: np_uint64,
+    explore_constant,
+):
+    current_key = root_key
+    current_node = tree_dict[current_key]
+
+    while not current_node.is_leaf():
+        best_child_idx = current_node.pick_child(explore_constant)
+        move_stack.add_node(current_key, best_child_idx)
+        row, col, dir_num = current_node.get_move(best_child_idx)
+
+        game.make_move(int8(row), int8(col), int8(dir_num))
+        current_key = uint64(game.current_hash)
+        current_node = tree_dict[current_key]
+
+    return current_node
+
+
+@njit
+def expand(
+    move_stack: StateClass,
+    tree_dict: DictType,
+    game: Abalone,
+    current_node: PUCTNode,
+):
+    if current_node.is_terminal:
+        return current_node
+
+    current_key = uint64(game.current_hash)
+    child_idx = current_node.expand_node(game)
+    move_stack.add_node(current_key, child_idx)
+
+    new_key = uint64(game.current_hash)
+    if new_key in tree_dict:
+        child_node = tree_dict[new_key]
+    else:
+        child_node = PUCTNode(game)
+        tree_dict[new_key] = child_node
+
+    current_node.set_child_values(child_idx, child_node)
+    return child_node
+
+
+@njit
+def propogate(
+    move_stack: StateClass,
+    tree_dict: DictType,
+    game: Abalone,
+    current_node: PUCTNode,
+    reward,
+):
+    game.undo_move(move_stack.get_size())
+    current_node.add_visit(-1, reward)
+    while not move_stack.is_empty():
+        reward = -reward
+        node_key, child_idx = move_stack.pop_node()
+        node_key = uint64(node_key)
+        node: PUCTNode = tree_dict[node_key]
+        node.add_visit(child_idx, reward)
 
 
 class PUCTPlayer:
@@ -65,135 +149,46 @@ class PUCTPlayer:
         self,
         max_leaf_explore: int = 1000,
         explore_constant: float = math.sqrt(2),
+        rollout_depth: int = 100,
     ):
-        self.model = AbaloneNetwork()
         self.max_leaf_explore = max_leaf_explore
         self.explore_constant = explore_constant
+        self.rollout_depth = rollout_depth
+        self.model = AbaloneNetwork()
 
-    def calc_PUCT(self, node: PUCTNode, parent_visits: int):
-        return node.Q + self.explore_constant * node.P * (
-            math.sqrt(parent_visits) / (node.N + 1)
-        )
-
-    def pick_child(self, current: PUCTNode, tree_dict):
-        children = [tree_dict[child_key] for child_key in current.visited_children_keys]
-        return max(
-            children,
-            key=lambda child: self.calc_PUCT(child, current.N),
-        )
-
-    def select(self, tree_key: PUCTNode, tree_dict: dict, game: Abalone):
-        temp: PUCTNode = tree_dict[tree_key]
-        stack = [temp]
-
-        while not temp.isLeaf():
-            next = self.pick_child(temp, tree_dict)
-            game.make_move(next.move)
-            stack.append(next)
-            temp = next
-
-        return stack
-
-    def expand(self, stack: list[PUCTNode], game: Abalone, tree_dict: dict):
-        curr = stack[-1]
-        if curr.is_terminal:
-            return
-
-        child = curr.visit_child(game, self.model, tree_dict)
-        stack.append(child)
-
-    def propagate(self, stack: list[PUCTNode], game: Abalone, visits: int = 1):
-        game.undo_move(len(stack))
-
-        temp = stack.pop()
-        v = temp.Q
-        temp.addVisit(v, visits=visits)
-
-        while len(stack) > 0:
-            temp = stack.pop()
-            v = -v
-            temp.addVisit(v, visits=visits)
-
-    def getMove(self, original_game: Abalone):
-        if original_game.status_arr != Abalone.ONGOING:
+    def get_move(self, original_game: Abalone):
+        if original_game.status != ONGOING:
             return None
 
-        tree_dict = {}
         game = original_game.copy()
-        tree_key = game.encode()
-        tree_dict[tree_key] = PUCTNode(-1, 0)
-        tree_node = tree_dict[tree_key]
-
-        tree_node.expand(game, self.model)
+        move_stack = StateClass()
+        root_key = uint64(game.current_hash)
+        root_node: PUCTNode = PUCTNode(game)
+        tree_dict = Dict.empty(uint64, PUCTNode.class_type.instance_type)
+        tree_dict[root_key] = root_node
 
         for _ in range(self.max_leaf_explore):
-            stack = self.select(tree_key, tree_dict, game)
-            self.expand(stack, game, tree_dict)
-            self.propagate(stack, game)
+            current_node = select(
+                move_stack, tree_dict, game, root_key, self.explore_constant
+            )
+            current_node = expand(move_stack, tree_dict, game, current_node)
 
-        children = [
-            tree_dict[child_key] for child_key in tree_node.visited_children_keys
-        ]
-        best_child = max(
-            children,
-            key=lambda child: child.N,
-        )
+            value = current_node.Q
+            if (
+                not current_node.is_fully_expanded
+            ):
+                policy, value = self.model.forward(game)
+                current_node.set_values_from_net_result(policy, value)
 
-        return best_child.move
+            propogate(move_stack, tree_dict, game, current_node, value)
 
-
-def main():
-    """
-    A simple main function for debugging purposes.
-    Allows two human players to play Connect Four in the terminal.
-    """
-    game = Abalone()
-
-    print("Welcome to Abalone!")
-    print("Player 1 is RED (R) and Player 2 is YELLOW (Y).\n")
-
-    computer_player = PUCTPlayer(
-        explore_constant=1,
-        max_leaf_explore=1000,
-    )
-
-    while game.status_arr == game.ONGOING:
-        print(game)
-        print(
-            "\nCurrent Player:",
-            "BLACK" if game.player == Abalone.BLACK else "WHITE",
-        )
-
-        if game.player == game.WHITE:
-            move = computer_player.getMove(game)
-        else:
-            move = computer_player.getMove(game)
-        print(game)
-
-        if move not in game.legal_moves():
-            print("Illegal move. Try again.")
-            continue
-        game.make_move(move)
-        try:
-            pass
-
-        except ValueError:
-            traceback.print_exc()
-            print(f"Invalid input. Enter a number between 0 and {game.width - 1}.")
-            break
-        except IndexError:
-            traceback.print_exc()
-            print("Move out of bounds. Try again.")
-            break
-
-    print(game)
-    if game.status_arr == game.BLACK:
-        print("\nBLACK (Player 1) wins!")
-    elif game.status_arr == game.WHITE:
-        print("\nWHITE (Player 2) wins!")
-    else:
-        print("\nIt's a draw!")
+        best_child_idx = root_node.pick_child(0)
+        return root_node.get_move(best_child_idx)
 
 
-if __name__ == "__main__":
-    main()
+_BOARD_STATE_DTYPE = [
+    ("board", np.int8, (2, BOARD_SIZE, BOARD_SIZE)),
+    ("black_captures", np.int8),
+    ("white_captures", np.int8),
+    ("current_player", np.int8),
+]

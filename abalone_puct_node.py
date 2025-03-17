@@ -21,7 +21,7 @@ _abalone_node_types = [
 
 
 @jitclass(_abalone_node_types)
-class MCTSNode:
+class PUCTNode:
     def __init__(self, game):
         self.N = int16(0)
         self.Q = float64(0)
@@ -45,6 +45,17 @@ class MCTSNode:
             self.children_Q = np.zeros(size, dtype=np.float64)
             self.children_key = np.zeros(size, dtype=np.uint64)
             self.is_in_current_path = np.zeros(size, dtype=np.bool)
+
+    def set_values_from_net_result(self, policy, value):
+        self.Q = value
+        if self.is_terminal:
+            self.is_fully_expanded = boolean(True)
+            return
+
+        for i in range(len(self.children_Q)):
+            row, col, dir_num = self.get_move(i)
+            move_idx = move_to_idx(row, col, dir_num)
+            self.children_Q[i] = policy[move_idx]
 
     def add_visit(self, child_idx, reward):
         self.N += 1
@@ -94,7 +105,9 @@ class MCTSNode:
         self.children_key[child_idx] = uint64(game.current_hash)
         self.children_N[child_idx] = 0
         self.children_Q[child_idx] = 0
-        self.general_children_idx[child_idx] = int16(move_to_idx(row, col, dir_num))
+        self.general_children_idx[child_idx] = int16(
+            move_to_idx(row, col, dir_num)
+        )
 
         self.children_visited_amount += 1
         if self.children_visited_amount >= self.children_key.shape[0]:

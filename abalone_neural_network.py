@@ -5,11 +5,11 @@ import torch
 import torch.nn as nn
 
 # import torch.optim as optim
-from abalone_numba import Abalone, TECHNIAL_MOVE_AMOUNT, VALID_BOARD_MASK
+from abalone import Abalone, TECHNIAL_MOVE_AMOUNT, VALID_BOARD_MASK
 
 
 class AbaloneNetwork(nn.Module):
-    CURR_DIR_PATH = os.getcwd()
+    CURR_DIR_PATH = os.path.join(os.getcwd(), "local_data")
     WEIGHTS_DIR_PATH = os.path.join(CURR_DIR_PATH, "model_weights")
     SNAPSHOTS_DIR_PATH = os.path.join(WEIGHTS_DIR_PATH, "snapshots")
     WEIGHTS_FILE_PATH = os.path.join(WEIGHTS_DIR_PATH, "current_weights.pth")
@@ -17,7 +17,7 @@ class AbaloneNetwork(nn.Module):
     def __init__(self, load_model: bool = True):
         super(AbaloneNetwork, self).__init__()
 
-        self.board_mask = VALID_BOARD_MASK.clone().flatten()
+        self.board_mask = VALID_BOARD_MASK.copy().flatten()
         num_valid_cells = self.board_mask.flatten().sum().item()
 
         self.conv1 = nn.Conv2d(2, 16, 3, stride=1, padding=1)

@@ -73,7 +73,9 @@ def random_uint64():
 def compute_zobrist_values(board_size, row_start, row_end):
     amount = board_size * board_size * 2 + 2
     numbers = np.zeros(amount, dtype=np.uint64)
-    board_placement_hash = np.zeros((board_size, board_size, 2), dtype=np.uint64)
+    board_placement_hash = np.zeros(
+        (board_size, board_size, 2), dtype=np.uint64
+    )
     current_player_hash = np.array([numbers[0], numbers[1]], dtype=np.uint64)
 
     while amount > 0:
@@ -94,14 +96,16 @@ def compute_zobrist_values(board_size, row_start, row_end):
     for row_index in range(0, board_size):
         for col_index in range(row_start[row_index], row_end[row_index]):
             for piece in range(2):
-                board_placement_hash[row_index, col_index, piece] = numbers[idx]
+                board_placement_hash[row_index, col_index, piece] = numbers[
+                    idx
+                ]
                 idx += 1
 
     return board_placement_hash, current_player_hash
 
 
 def load_zobrist_values(board_size, row_start, row_end):
-    base_path = os.getcwd()
+    base_path = os.path.join(os.getcwd(), "local_data")
     dir_path = os.path.join(base_path, "zobrist")
     os.makedirs(dir_path, exist_ok=True)
     board_placement_file = os.path.join(dir_path, "board_placement.npy")
@@ -196,7 +200,10 @@ def idx_to_move(idx):
 @njit(inline="always", cache=True)
 def _is_in_bounds(row, col):
     return (
-        row >= 0 and row < BOARD_SIZE and col >= _ROW_START[row] and col < _ROW_END[row]
+        row >= 0
+        and row < BOARD_SIZE
+        and col >= _ROW_START[row]
+        and col < _ROW_END[row]
     )
 
 
@@ -438,7 +445,9 @@ class Abalone:
             row_end = _row_end[row_index]
 
             left_offset = _board_size - row_index
-            right_offset = 1 + 2 * row_start if row_index > _MID_ROW_INDEX else 1
+            right_offset = (
+                1 + 2 * row_start if row_index > _MID_ROW_INDEX else 1
+            )
             str = " " * left_offset + f"{row_index + 1}" + " " * right_offset
 
             for col_index in range(row_start, row_end):
@@ -457,7 +466,9 @@ class Abalone:
         count_similar = 0
         curr_row, curr_col = int8(row), int8(col)
         new_hash = _switch_player_hash(self.current_hash)
-        new_hash = _switch_piece_hash(curr_row, curr_col, self.player, EMPTY, new_hash)
+        new_hash = _switch_piece_hash(
+            curr_row, curr_col, self.player, EMPTY, new_hash
+        )
         while (
             _is_in_bounds(curr_row, curr_col)
             and _piece_to_player(self.board[curr_row][curr_col]) == self.player
@@ -502,7 +513,9 @@ class Abalone:
         if self.board[curr_row, curr_col] != EMPTY:
             return False
 
-        new_hash = _switch_piece_hash(curr_row, curr_col, EMPTY, opponent, new_hash)
+        new_hash = _switch_piece_hash(
+            curr_row, curr_col, EMPTY, opponent, new_hash
+        )
         return _check_not_repeat(self.past_state_hashes, new_hash)
 
     def legal_moves(self):
@@ -511,7 +524,9 @@ class Abalone:
         if self.status != ONGOING:
             return legal_moves
 
-        temp_legal_moves = np.zeros((_ACTUAL_POSSIBLE_MOVE_AMOUNT, 3), dtype=np.int8)
+        temp_legal_moves = np.zeros(
+            (_ACTUAL_POSSIBLE_MOVE_AMOUNT, 3), dtype=np.int8
+        )
         player_index = _player_to_player_index(self.player)
 
         piece_start = _PIECE_START_RANGES[player_index]
@@ -553,7 +568,9 @@ class Abalone:
         curr_row, curr_col = row, col
         curr_piece = self._switch_piece(curr_row, curr_col, EMPTY)
         curr_player = _piece_to_player(curr_piece)
-        self.undo_move_stack.add_change(undo_idx, curr_row, curr_col, curr_piece)
+        self.undo_move_stack.add_change(
+            undo_idx, curr_row, curr_col, curr_piece
+        )
 
         while curr_piece != EMPTY:
             next_row = curr_row + d_row
@@ -608,7 +625,9 @@ class Abalone:
 
         change_amount = self.undo_move_stack.get_change_amount(undo_idx)
         for change_idx in range(change_amount - 1, -1, -1):
-            row, col, piece = self.undo_move_stack.get_change(undo_idx, change_idx)
+            row, col, piece = self.undo_move_stack.get_change(
+                undo_idx, change_idx
+            )
             self._switch_piece(row, col, piece)
 
         captured_piece = self.undo_move_stack.get_captured_piece(undo_idx)
@@ -752,7 +771,9 @@ def test_one():
                 print(game.past_state_hashes, copy.past_state_hashes)
             if not np.array_equal(game.captures, copy.captures):
                 print(game.captures, copy.captures)
-            if not np.array_equal(game.active_positions, copy.active_positions):
+            if not np.array_equal(
+                game.active_positions, copy.active_positions
+            ):
                 print(game.active_positions == copy.active_positions)
             break
         # print(game)
