@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import os
 from abalone_undo_move import UndoMoveList
 from numba import int8, njit, uint64, int16

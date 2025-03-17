@@ -1,11 +1,30 @@
 import os
 from datetime import datetime
 
+import numpy as np
 import torch
 import torch.nn as nn
 
 # import torch.optim as optim
 from abalone import Abalone, TECHNIAL_MOVE_AMOUNT, VALID_BOARD_MASK
+
+
+def convert_encoded_board_to_tensors(board_state, legal_moves_mask):
+    board, black_captures, white_captures, player = board_state
+
+    board_tensor = torch.tensor(board)
+    board_tensor = board_tensor.unsqueeze(0)
+
+    extra_arr = np.array(
+        [black_captures, white_captures, player], dtype=np.float32
+    )
+    extra_tensor = torch.tensor(extra_arr, device=board_tensor.device)
+    extra_tensor = extra_tensor.unsqueeze(0)
+
+    legal_move_tensor = torch.tensor(
+        legal_moves_mask, device=board_tensor.device, dtype=torch.bool
+    )
+    return board_tensor, extra_tensor, legal_move_tensor
 
 
 class AbaloneNetwork(nn.Module):
@@ -37,15 +56,8 @@ class AbaloneNetwork(nn.Module):
         if load_model:
             self.load_model()
 
-    def forward(self, game: Abalone):
-        (board, player, black_captures, white_captures) = game.encode()
-
-        x = torch.tensor(
-            board, device=next(self.parameters()).device, dtype=torch.float32
-        )
-
-        x = x.unsqueeze(0)
-
+    def forward(self, board, extra, legal_move_mask):
+        x = board
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
 
@@ -55,18 +67,17 @@ class AbaloneNetwork(nn.Module):
         x = x.flatten(start_dim=1)
         x = self.relu(self.fc1(x))
 
-        extra = torch.tensor(
-            [player, black_captures, white_captures],
-            device=x.device,
-        ).unsqueeze(0)
-
-        extra = extra.expand(batch_size, -1)
         x = torch.cat([x, extra], dim=1)
 
         x = self.relu(self.fc2(x))
         x = self.relu(self.fc3(x))
 
         policy_logits = self.policy_head(x)
+
+        largest_negative_torch = torch.finfo(torch.float32).min
+        policy_logits = policy_logits.masked_fill(
+            ~legal_move_mask, largest_negative_torch
+        )
 
         policy = self.softmax(policy_logits).flatten()
         value = self.tanh(self.value_head(x)).item()
