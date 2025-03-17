@@ -20,16 +20,20 @@ def decode_board_state(state_data):
 
     smallest_negative = np.finfo(np.float64).min
     policy_temp = np.full(TECHNIAL_MOVE_AMOUNT, smallest_negative, dtype=np.float64)
+
+    legal_move_mask = np.zeros(TECHNIAL_MOVE_AMOUNT, dtype=np.int8)
+
     for index in range(len(children_move_idx)):
         child_idx = children_move_idx[index]
         policy_temp[child_idx] = children_move_Q[index]
+        legal_move_mask[child_idx] = 1
 
     policy_tensor = torch.from_numpy(policy_temp)
     softmax_tensor = policy_tensor.softmax(0)
     policy = softmax_tensor.numpy()
 
-    board_state = (board, player, black_captures, white_captures)
-    return board_state, policy, value
+    board_state = (board, black_captures, white_captures, player)
+    return board_state, legal_move_mask, policy, value
 
 
 def build_training_data():
@@ -39,7 +43,8 @@ def build_training_data():
     os.makedirs(res_data_folder, exist_ok=True)
     file_list = os.listdir(data_folder)
 
-    data_snippet = pd.DataFrame(columns=["board_state", "policy", "value"])
+    columns = ["board_state", "legal_move_mask", "policy", "value"]
+    data_snippet = pd.DataFrame(columns=columns)
 
     name_idx = 0
     for file_name in tqdm(file_list):
@@ -52,8 +57,9 @@ def build_training_data():
         curr_size = data_snippet.shape[0]
         for idx, row in np_data.iterrows():
             curr_idx = idx + curr_size
-            board_state, policy, value = decode_board_state(row)
+            board_state, legal_move_mask, policy, value = decode_board_state(row)
             data_snippet.loc[curr_idx, "board_state"] = board_state
+            data_snippet.loc[curr_idx, "legal_move_mask"] = legal_move_mask
             data_snippet.loc[curr_idx, "policy"] = policy
             data_snippet.loc[curr_idx, "value"] = value
 
@@ -62,7 +68,7 @@ def build_training_data():
             file_path = os.path.join(res_data_folder, file_name)
             data_snippet.to_pickle(file_path)
             name_idx += 1
-            data_snippet = pd.DataFrame(columns=["board_state", "policy", "value"])
+            data_snippet = pd.DataFrame(columns=columns)
 
     if data_snippet.shape[0] > 0:
         file_name = f"final_data_{name_idx}.pickle"
@@ -70,4 +76,5 @@ def build_training_data():
         data_snippet.to_pickle(file_path)
 
 
-build_training_data()
+if __name__ == "__main__":
+    build_training_data()
