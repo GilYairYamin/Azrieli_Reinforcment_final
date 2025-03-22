@@ -55,7 +55,7 @@ def create_conversion_types(board_size, row_start, row_end, num_directions):
 
 @njit(cache=True)
 def create_np_mask(board_size, row_start, row_end):
-    np_arr = np.zeros((board_size, board_size), dtype=np.int8)
+    np_arr = np.zeros((board_size, board_size), dtype=np.bool)
     for row_idx in range(0, board_size):
         for col_idx in range(row_start[row_idx], row_end[row_idx]):
             np_arr[row_idx, col_idx] = 1

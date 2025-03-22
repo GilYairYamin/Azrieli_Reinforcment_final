@@ -10,7 +10,7 @@ from abalone_neural_network import (
     convert_encoded_board_to_tensors,
 )
 from torch.utils.data import Dataset, DataLoader
-from abalone import TECHNIAL_MOVE_AMOUNT
+from tqdm import tqdm
 
 
 class AbaloneDataset(Dataset):
@@ -48,7 +48,7 @@ class AbaloneDataset(Dataset):
 
 
 def train_network(
-    model, dataloader, num_epochs=10, learning_rate=1e-3, device="cpu"
+    model: AbaloneNetwork, dataloader, num_epochs=10, learning_rate=1e-3, device="cpu"
 ):
     # Move the model to the desired device
     model.to(device)
@@ -64,7 +64,7 @@ def train_network(
     # For the value head, we use mean squared error.
     mse_loss = nn.MSELoss()
 
-    for epoch in range(num_epochs):
+    for epoch in tqdm(range(num_epochs), desc="epochs"):
         epoch_loss = 0.0
         for batch in dataloader:
             # Unpack the batch. Adjust the order if your dataloader returns things differently.
@@ -108,6 +108,7 @@ def train_network(
         avg_loss = epoch_loss / len(dataloader)
         print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {avg_loss:.4f}")
 
+    model.save_model()
     return model
 
 
@@ -125,8 +126,8 @@ def train_on_pickle_files(
         if f.endswith(".pickle")
     ]
 
-    for pickle_file in pickle_files:
-        print(f"Training on file: {pickle_file}")
+    for pickle_file in tqdm(pickle_files, desc="files"):
+        print(f"\nTraining on file: {pickle_file}\n")
         dataset = AbaloneDataset(pickle_file)
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         model = train_network(
@@ -141,7 +142,7 @@ def train_on_pickle_files(
 
 if __name__ == "__main__":
     res_data_folder = os.path.join(os.getcwd(), "local_data", "result data")
-    model = AbaloneNetwork(load_model=True)
+    model = AbaloneNetwork(load_model=False)
 
     trained_model = train_on_pickle_files(
         model,

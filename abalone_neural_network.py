@@ -9,15 +9,19 @@ import torch.nn as nn
 from abalone import Abalone, TECHNIAL_MOVE_AMOUNT, VALID_BOARD_MASK
 
 
-def convert_encoded_board_to_tensors(board_state, legal_moves_mask):
+def convert_encoded_board_to_tensors(board_state, legal_moves_mask, unsqueeze=False):
     board, black_captures, white_captures, player = board_state
 
-    board_tensor = torch.tensor(board)
-    board_tensor = board_tensor.unsqueeze(0)
+    board_tensor = torch.tensor(board, dtype=torch.float32)
 
     extra_arr = np.array([black_captures, white_captures, player], dtype=np.float32)
-    extra_tensor = torch.tensor(extra_arr, device=board_tensor.device)
-    extra_tensor = extra_tensor.unsqueeze(0)
+    extra_tensor = torch.tensor(
+        extra_arr, device=board_tensor.device, dtype=torch.float32
+    )
+
+    if unsqueeze:
+        board_tensor = board_tensor.unsqueeze(0)
+        extra_tensor = extra_tensor.unsqueeze(0)
 
     legal_move_tensor = torch.tensor(
         legal_moves_mask, device=board_tensor.device, dtype=torch.bool
@@ -28,14 +32,14 @@ def convert_encoded_board_to_tensors(board_state, legal_moves_mask):
 class AbaloneNetwork(nn.Module):
     CURR_DIR_PATH = os.path.join(os.getcwd(), "local_data")
     WEIGHTS_DIR_PATH = os.path.join(CURR_DIR_PATH, "model_weights")
-    SNAPSHOTS_DIR_PATH = os.path.join(WEIGHTS_DIR_PATH, "snapshots")
     WEIGHTS_FILE_PATH = os.path.join(WEIGHTS_DIR_PATH, "current_weights.pth")
+    SNAPSHOTS_DIR_PATH = os.path.join(WEIGHTS_DIR_PATH, "snapshots")
 
     def __init__(self, load_model: bool = True):
         super(AbaloneNetwork, self).__init__()
 
         self.board_mask = VALID_BOARD_MASK.copy().flatten()
-        num_valid_cells = self.board_mask.flatten().sum().item()
+        num_valid_cells = self.board_mask.sum().item()
 
         self.conv1 = nn.Conv2d(2, 16, 3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(16, 32, 3, stride=1, padding=1)
@@ -77,7 +81,7 @@ class AbaloneNetwork(nn.Module):
             ~legal_move_mask, largest_negative_torch
         )
 
-        policy = self.softmax(policy_logits).flatten()
+        policy = self.softmax(policy_logits)
         value = self.tanh(self.value_head(x))
         return policy, value
 
@@ -85,11 +89,12 @@ class AbaloneNetwork(nn.Module):
         os.makedirs(self.WEIGHTS_DIR_PATH, exist_ok=True)
         os.makedirs(self.SNAPSHOTS_DIR_PATH, exist_ok=True)
 
+        current_time = datetime.now().strftime("%Y.%m.%d_%H-%M-%S")
+        snapshot_name = f"{current_time}_weights.pth"
+        snapshot_path = os.path.join(self.SNAPSHOTS_DIR_PATH, snapshot_name)
+
         torch.save(self.state_dict(), self.WEIGHTS_FILE_PATH)
-        current_time = datetime.now().strftime("%Y.%m.%d_%H:%M:%S")
-        snapshot_name = f"weights_{current_time}.pth"
-        file_path = os.path.join(self.SNAPSHOTS_DIR_PATH, snapshot_name)
-        torch.save(self.state_dict(), file_path)
+        torch.save(self.state_dict(), snapshot_path)
 
     def load_model(self):
         try:
@@ -103,11 +108,12 @@ class AbaloneNetwork(nn.Module):
 if __name__ == "__main__":
     model = AbaloneNetwork()
 
-    game = Abalone()
-    policy, value = model.forward(game)
+    game = Abalone(True)
 
-    print("Policy Output Shape:", policy.shape)
-    print("Value Output:", value)
+    # policy, value = model.forward()
 
-    print(policy[0].item())
+    # print("Policy Output Shape:", policy.shape)
+    # print("Value Output:", value)
+
+    # print(policy[0].item())
     model.save_model()
