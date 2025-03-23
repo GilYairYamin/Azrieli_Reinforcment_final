@@ -1,13 +1,11 @@
 import os
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 import torch
-
-
-from abalone import TECHNIAL_MOVE_AMOUNT, Abalone
-
-
 from tqdm import tqdm
+
+from abalone import TECHNIAL_MOVE_AMOUNT
 
 
 def decode_board_state(state_data):
@@ -21,9 +19,13 @@ def decode_board_state(state_data):
     children_move_idx = state_data["children_move_idx"]
     value = state_data["final_status"]
 
-    smallest_negative = np.finfo(np.float32).min
-    policy_temp = np.full(TECHNIAL_MOVE_AMOUNT, smallest_negative, dtype=np.float32)
-    policy_temp = np.full(TECHNIAL_MOVE_AMOUNT, smallest_negative, dtype=np.float32)
+    smallest_negative = np.finfo(np.float64).min
+    policy_temp = np.full(
+        TECHNIAL_MOVE_AMOUNT, smallest_negative, dtype=np.float64
+    )
+    policy_temp = np.full(
+        TECHNIAL_MOVE_AMOUNT, smallest_negative, dtype=np.float64
+    )
 
     legal_move_mask = np.zeros(TECHNIAL_MOVE_AMOUNT, dtype=np.int8)
 

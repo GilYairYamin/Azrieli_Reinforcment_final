@@ -34,9 +34,9 @@ class AbaloneDataset(Dataset):
             convert_encoded_board_to_tensors(board_state, legal_move_mask)
         )
         # Convert target_policy (a numpy array) to a tensor
-        target_policy = torch.tensor(target_policy, dtype=torch.float32)
+        target_policy = torch.tensor(target_policy, dtype=torch.float64)
         # Wrap target_value in a tensor. (Ensure proper shape; here a 1-element tensor.)
-        target_value = torch.tensor([target_value], dtype=torch.float32)
+        target_value = torch.tensor([target_value], dtype=torch.float64)
 
         return (
             board_tensor,
@@ -106,7 +106,7 @@ def train_network(
             epoch_loss += loss.item()
 
         avg_loss = epoch_loss / len(dataloader)
-        print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {avg_loss:.4f}")
+        tqdm.write(f"Epoch {epoch + 1}/{num_epochs}, Loss: {avg_loss:.4f}")
 
     model.save_model()
     return model
@@ -117,7 +117,7 @@ def train_on_pickle_files(
     data_folder,
     batch_size=32,
     num_epochs=5,
-    learning_rate=1e-3,
+    learning_rate=1e-2,
     device="cpu",
 ):
     pickle_files = [
@@ -127,7 +127,7 @@ def train_on_pickle_files(
     ]
 
     for pickle_file in tqdm(pickle_files, desc="files"):
-        print(f"\nTraining on file: {pickle_file}\n")
+        tqdm.write(f"\nTraining on file: {pickle_file}\n")
         dataset = AbaloneDataset(pickle_file)
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         model = train_network(
@@ -140,17 +140,21 @@ def train_on_pickle_files(
     return model
 
 
-if __name__ == "__main__":
+def pre_train_model():
     res_data_folder = os.path.join(os.getcwd(), "local_data", "result data")
-    model = AbaloneNetwork(load_model=False)
+    model = AbaloneNetwork(load_model=True)
 
     trained_model = train_on_pickle_files(
         model,
         res_data_folder,
         batch_size=32,
         num_epochs=5,
-        learning_rate=1e-3,
+        learning_rate=1e-2,
         device="cuda",
     )
 
     trained_model.save_model()
+
+
+if __name__ == "__main__":
+    pre_train_model()

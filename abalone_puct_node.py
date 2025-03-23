@@ -11,40 +11,35 @@ _abalone_node_types = [
     ("is_terminal", boolean),
     ("is_fully_expanded", boolean),
     ("children_visited_amount", int16),
-    ("general_children_idx", int16[:]),
+    ("children_move_idx", int16[:]),
     ("children_N", int16[:]),
     ("children_Q", float64[:]),
     ("children_key", uint64[:]),
     ("is_in_current_path", boolean[:]),
-    ("children_move", int8[:, :]),
 ]
 
 
 @jitclass(_abalone_node_types)
 class PUCTNode:
-    def __init__(self, game):
+    def __init__(self, game: Abalone):
         self.N = int16(0)
         self.Q = float64(0)
         self.is_terminal = boolean(game.status != ONGOING)
         self.is_fully_expanded = boolean(False)
         self.children_visited_amount = int16(0)
 
-        if self.is_terminal:
-            self.children_move = np.empty((0, 3), dtype=np.int8)
-            self.general_children_idx = np.empty(0, dtype=np.int16)
-            self.children_N = np.empty(0, dtype=np.int16)
-            self.children_Q = np.empty(0, dtype=np.float64)
-            self.children_key = np.empty(0, dtype=np.uint64)
-            self.is_in_current_path = np.empty(0, dtype=np.bool)
+        size = 0
+        if not self.is_terminal:
+            self.children_move_idx = game.legal_moves()
+            np.random.shuffle(self.children_move_idx)
+            size = self.children_move_idx.shape[0]
         else:
-            self.children_move = game.legal_moves()
-            np.random.shuffle(self.children_move)
-            size = self.children_move.shape[0]
-            self.general_children_idx = np.zeros(size, dtype=np.int16)
-            self.children_N = np.zeros(size, dtype=np.int16)
-            self.children_Q = np.zeros(size, dtype=np.float64)
-            self.children_key = np.zeros(size, dtype=np.uint64)
-            self.is_in_current_path = np.zeros(size, dtype=np.bool)
+            self.children_move_idx = np.zeros(0, dtype=np.int16)
+
+        self.children_N = np.zeros(size, dtype=np.int16)
+        self.children_Q = np.zeros(size, dtype=np.float64)
+        self.children_key = np.zeros(size, dtype=np.uint64)
+        self.is_in_current_path = np.zeros(size, dtype=np.bool)
 
     def set_values_from_net_result(self, policy, value):
         self.Q = value
@@ -105,9 +100,7 @@ class PUCTNode:
         self.children_key[child_idx] = uint64(game.current_hash)
         self.children_N[child_idx] = 0
         self.children_Q[child_idx] = 0
-        self.general_children_idx[child_idx] = int16(
-            move_to_idx(row, col, dir_num)
-        )
+        self.general_children_idx[child_idx] = int16(move_to_idx(row, col, dir_num))
 
         self.children_visited_amount += 1
         if self.children_visited_amount >= self.children_key.shape[0]:
@@ -123,11 +116,7 @@ class PUCTNode:
         return self.children_key[child_idx]
 
     def get_move(self, child_idx):
-        move = self.children_move[child_idx]
-        row = move[0]
-        col = move[1]
-        dir_num = move[2]
-        return row, col, dir_num
+        return self.children_move_idx[child_idx]
 
     def get_move_and_values(self, child_idx):
         return (

@@ -1,11 +1,13 @@
+import os
+
 import numpy as np
 import torch
-import os
-from abalone_undo_move import UndoMoveList
-from numba import int8, njit, uint64, int16
+from numba import float64, int8, int16, int64, njit, uint64
 from numba.experimental import jitclass
 from numba.typed import Dict, List
 from numba.types import DictType
+
+from abalone_undo_move import UndoMoveList
 
 
 @njit(cache=True)
@@ -149,6 +151,7 @@ _MID_ROW_INDEX = int8(BOARD_SIZE // 2)
 _PLAYER_PIECE_AMOUNT = int8(14)
 _MAX_SIMILAR_PUSH = int8(3)
 _MAX_CAPTURES = int8(6)
+_MAX_REPEATING = 1
 
 _DIRECTIONS = np.array(
     [(0, 1), (0, -1), (1, 0), (1, 1), (-1, 0), (-1, -1)], dtype=np.int8
@@ -285,10 +288,13 @@ def _switch_piece_hash(row, col, old_piece, new_piece, old_hash):
 
 
 @njit(inline="always", cache=True)
-def _check_not_repeat(past_state_hashes, next_key):
-    if next_key in past_state_hashes:
-        return past_state_hashes[next_key] < 2
-    return True
+def _check_not_repeating(past_state_hashes, next_key):
+    if (
+        next_key not in past_state_hashes
+        or past_state_hashes[next_key] < _MAX_REPEATING
+    ):
+        return True
+    return False
 
 
 numbalone_class_types = [
@@ -355,7 +361,7 @@ class Abalone:
             if piece_amount < row_len:
                 half_pieces = np.int8(piece_amount // 2)
                 row_mid = np.int8((row_start + row_end) // 2)
-                if direction < 0 and piece_amount % 2 == 0:
+                if direction < 0 and piece_amount % 2 != row_len % 2:
                     row_mid += 1
 
                 row_start = np.int8(row_mid - half_pieces)
@@ -433,9 +439,6 @@ class Abalone:
         )
 
     def to_string(self):
-        return self.__str__()
-
-    def __str__(self):
         result = ""
         _row_start = _ROW_START
         _row_end = _ROW_END
@@ -455,10 +458,17 @@ class Abalone:
                 str += f"{_value_to_str(self.board[row_index, col_index])} "
 
             result += f"{str}\n"
-        result += "  A B C D E F G H I\n"
+
+        letters = ""
+        for i in range(BOARD_SIZE):
+            letters += f"{chr(ord('A') + i)} "
+        result += f"  {letters}\n"
         result += f"black score: {self.captures[BLACK_INDEX]}\n"
         result += f"white score: {self.captures[WHITE_INDEX]}\n"
         return result
+
+    def __str__(self):
+        return self.to_string()
 
     def _is_legal_move(self, row, col, dir_num):
         d_row = _DIRECTIONS[dir_num, 0]
@@ -489,7 +499,7 @@ class Abalone:
             new_hash = _switch_piece_hash(
                 curr_row, curr_col, EMPTY, self.player, new_hash
             )
-            return _check_not_repeat(self.past_state_hashes, new_hash)
+            return _check_not_repeating(self.past_state_hashes, new_hash)
 
         count_opposing = 0
         opponent = other_player(self.player)
@@ -509,7 +519,7 @@ class Abalone:
             return False
 
         if not _is_in_bounds(curr_row, curr_col):
-            return _check_not_repeat(self.past_state_hashes, new_hash)
+            return _check_not_repeating(self.past_state_hashes, new_hash)
 
         if self.board[curr_row, curr_col] != EMPTY:
             return False
@@ -517,18 +527,19 @@ class Abalone:
         new_hash = _switch_piece_hash(
             curr_row, curr_col, EMPTY, opponent, new_hash
         )
-        return _check_not_repeat(self.past_state_hashes, new_hash)
+        return _check_not_repeating(self.past_state_hashes, new_hash)
 
-    def legal_moves(self):
-        legal_moves = np.empty((0, 3), dtype=np.int8)
+    def legal_moves(self, player=EMPTY):
+        if player == EMPTY:
+            player = self.player
 
         if self.status != ONGOING:
-            return legal_moves
+            return np.empty(0, dtype=np.int16)
 
         temp_legal_moves = np.zeros(
-            (_ACTUAL_POSSIBLE_MOVE_AMOUNT, 3), dtype=np.int8
+            _ACTUAL_POSSIBLE_MOVE_AMOUNT, dtype=np.int16
         )
-        player_index = _player_to_player_index(self.player)
+        player_index = _player_to_player_index(player)
 
         piece_start = _PIECE_START_RANGES[player_index]
         piece_end = _PIECE_END_RANGES[player_index]
@@ -542,21 +553,18 @@ class Abalone:
                     continue
 
                 col_i = position[1]
-                is_legal = self._is_legal_move(row_i, col_i, dir_num)
-                if is_legal:
-                    temp_legal_moves[count, int8(0)] = int8(row_i)
-                    temp_legal_moves[count, int8(1)] = int8(col_i)
-                    temp_legal_moves[count, int8(2)] = int8(dir_num)
+                if self._is_legal_move(row_i, col_i, dir_num):
+                    move_index = move_to_idx(row_i, col_i, dir_num)
+                    temp_legal_moves[count] = move_index
                     count += 1
 
-        legal_moves = np.empty((count, 3), dtype=np.int8)
-        legal_moves[:count, :] = temp_legal_moves[:count, :]
+        legal_moves = np.empty(count, dtype=np.int16)
+        legal_moves[:count] = temp_legal_moves[:count]
         return legal_moves
 
-    def legal_moves_idx_filter(self):
+    def get_legal_moves_mask(self):
         legal_moves = self.legal_moves()
-        filter_size = TECHNIAL_MOVE_AMOUNT
-        np_filter = np.zeros(filter_size, dtype=np.bool)
+        np_filter = np.zeros(TECHNIAL_MOVE_AMOUNT, dtype=np.bool)
         for move in legal_moves:
             np_filter[move] = True
         return np_filter
@@ -597,11 +605,10 @@ class Abalone:
             print(self)
             raise Exception("oh no")
 
-    def make_move(self, row, col, dir_num, check_legal=True):
+    def make_move_by_row_col_dir(self, row, col, dir_num, check_legal=True):
         row, col, dir_num = int8(row), int8(col), int8(dir_num)
         if check_legal:
-            is_legal = self._is_legal_move(row, col, dir_num)
-            if not is_legal:
+            if not self._is_legal_move(row, col, dir_num):
                 return
 
         self._make_move_function(row, col, dir_num)
@@ -610,6 +617,12 @@ class Abalone:
             self.past_state_hashes[self.current_hash] += int8(1)
         else:
             self.past_state_hashes[self.current_hash] = int8(1)
+
+    def make_move(self, move_index, check_legal=True):
+        row, col, dir_num = idx_to_move(move_index)
+        self.make_move_by_row_col_dir(
+            row, col, dir_num, check_legal=check_legal
+        )
 
     def _restore_piece(self, captured_piece):
         self.status = ONGOING
@@ -650,24 +663,59 @@ class Abalone:
 
             self._undo_last_move()
 
-    def abalone_heuristic(self, res_player):
-        res = self.status
-        if self.status == ONGOING:
-            res = (
-                self.captures[BLACK_INDEX] - self.captures[WHITE_INDEX]
-            ) / _MAX_CAPTURES
+    def abalone_heuristic(self, res_player=BLACK):
+        if self.status != ONGOING:
+            return self.status
+
+        material_score = int64(self.captures[BLACK_INDEX]) - int64(
+            self.captures[WHITE_INDEX]
+        )
+
+        black_moves = len(self.legal_moves(BLACK))
+        white_moves = len(self.legal_moves(WHITE))
+        mobility_score = int64(black_moves) - int64(white_moves)
+
+        central_black = 0.0
+        central_white = 0.0
+        for row in range(BOARD_SIZE):
+            row_start = _ROW_START[row]
+            row_end = _ROW_END[row]
+            # Approximate the center column for this row.
+            center_col = float64(row_start + row_end) / 2.0
+            for col in range(row_start, row_end):
+                piece = self.board[row, col]
+                p = _piece_to_player(piece)
+
+                dist = abs(row - _MID_ROW_INDEX) + abs(col - center_col)
+                bonus = (BOARD_SIZE / 2.0) - dist
+                if p == BLACK:
+                    central_black += bonus
+                elif p == WHITE:
+                    central_white += bonus
+        central_score = central_black - central_white
+
+        raw_score = (
+            float64(1000) * float64(material_score)
+            + float64(10) * float64(mobility_score)
+            + float64(1) * float64(central_score)
+        )
+
+        # Normalize the raw score to the range [-1, 1] using tanh.
+        # The scaling constant K can be tuned to fit typical score ranges.
+        K = 10000.0
+        normalized_score = np.tanh(raw_score / K)
 
         if res_player == WHITE:
-            res = -res
-        return res
+            normalized_score = -normalized_score
+
+        return normalized_score
 
     def rollout(self, maxDepth=-1):
         res_player = self.player
         count = 0
-        while self.status == ONGOING and maxDepth != 0:
-            maxDepth = -1 if maxDepth < 0 else maxDepth - 1
-            row, col, dir_num = self.get_random_legal_move()
-            self.make_move(row, col, dir_num, False)
+        while self.status == ONGOING and count != maxDepth:
+            move_idx = self.get_random_legal_move()
+            self.make_move(move_idx, False)
             count += 1
 
         result = self.abalone_heuristic(res_player)
@@ -692,11 +740,7 @@ class Abalone:
     def get_random_legal_move(self):
         moves = self.legal_moves()
         index = int8(np.random.randint(0, int8(len(moves))))
-        move = moves[index]
-        row = move[0]
-        col = move[1]
-        dir_num = move[2]
-        return row, col, dir_num
+        return moves[index]
 
 
 def request_user_input():
@@ -738,19 +782,16 @@ def test_two():
         print(game.to_string())
 
 
-@njit
+# @njit
 def test_one():
     game = Abalone(True)
-
-    game_state_list = List()
+    game_state_list = []  # List()
     game_state_list.append(game.copy(True))
     print(game.to_string())
 
     while game.status == ONGOING:
-        row, col, dir_num = game.get_random_legal_move()
-        game.make_move(row, col, dir_num)
-        # if not compare_hashes(game):
-        #     return
+        move_idx = game.get_random_legal_move()
+        game.make_move(move_idx)
         rollout_res = game.rollout(100)
         print("rollout", rollout_res)
         print(game.to_string())
@@ -783,7 +824,7 @@ def test_one():
 
 
 if __name__ == "__main__":
-    # test_one()
+    test_one()
 
     game = Abalone(True)
     game_state = game.encode()

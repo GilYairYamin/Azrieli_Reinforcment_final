@@ -5,7 +5,7 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from numba import float64, int8, int64, njit, uint64
+from numba import float64, int64, njit, uint64
 from numba.experimental import jitclass
 from numba.typed import Dict
 from numba.types import DictType, np_uint64
@@ -13,7 +13,8 @@ from numba.types import DictType, np_uint64
 from abalone import (
     BOARD_SIZE,
     ONGOING,
-    WHITE_WIN,
+    BLACK,
+    WHITE,
     Abalone,
 )
 from abalone_mcts_node import MCTSNode
@@ -85,14 +86,14 @@ def select(
     explore_constant,
 ):
     current_key = root_key
-    current_node = tree_dict[current_key]
+    current_node: MCTSNode = tree_dict[current_key]
 
     while not current_node.is_leaf():
-        best_child_idx = current_node.pick_child(explore_constant)
+        best_child_idx = current_node.pick_child_by_uct(explore_constant)
         move_stack.add_node(current_key, best_child_idx)
-        row, col, dir_num = current_node.get_move(best_child_idx)
+        move_idx = current_node.get_move(best_child_idx)
 
-        game.make_move(int8(row), int8(col), int8(dir_num))
+        game.make_move(move_idx)
         current_key = uint64(game.current_hash)
         current_node = tree_dict[current_key]
 
@@ -168,7 +169,7 @@ def get_move_and_data(
         reward = game.rollout(rollout_depth)
         propogate(move_stack, tree_dict, game, current_node, reward)
 
-    best_child_idx = root_node.pick_child(0)
+    best_child_idx = root_node.pick_child_by_uct(0)
     return root_node.get_move_and_values(best_child_idx)
 
 
@@ -210,7 +211,7 @@ class MCTSPlayer:
             reward = game.rollout(self.rollout_depth)
             propogate(move_stack, tree_dict, game, current_node, reward)
 
-        best_child_idx = root_node.pick_child(0)
+        best_child_idx = root_node.pick_child_by_visits()
         return root_node.get_move(best_child_idx)
 
 
@@ -232,17 +233,19 @@ def convert_state_to_np_arr(game_state):
     return np_state
 
 
-def simulate_games(pid, number: int = 10000):
+def simulate_games(pid, number: int = 100, max_game_length: int = 200):
     current_dir = os.getcwd()
     data_dir = os.path.join(current_dir, "data")
     os.makedirs(data_dir, exist_ok=True)
-    computer_player = MCTSPlayer(max_leaf_explore=1750, rollout_depth=25)
+    computer_player = MCTSPlayer(max_leaf_explore=1700, rollout_depth=20)
 
     for game_id in range(1, number + 1):
         now = datetime.now()
-        readable_time = now.strftime("%d.%m.%Y_%H:%M:%S")
+        readable_time = now.strftime("%d.%m.%Y_%H-%M-%S")
+        iteration_str = f"started iteration {game_id}"
+        print()
         print(
-            f"proccess {pid}, current_time: {readable_time}, started iteration {game_id}"
+            f"proccess {pid}, current_time: {readable_time}, {iteration_str}"
         )
 
         game = Abalone(True)
@@ -255,8 +258,9 @@ def simulate_games(pid, number: int = 10000):
                 "final_status",
             ]
         )
+
         state_idx = 0
-        while game.status == ONGOING:
+        while game.status == ONGOING and max_game_length != state_idx:
             if (state_idx + 1) % 60 == 0:
                 print(f"pid {pid}, game {game_id}, move {state_idx + 1}")
 
@@ -272,9 +276,7 @@ def simulate_games(pid, number: int = 10000):
             game.make_move(row, col, dir_num)
             state_idx += 1
 
-        final_status = game.status
-        if game.status == WHITE_WIN:
-            final_status = -game.status
+        final_status = game.abalone_heuristic(game.player)
 
         for idx in range(state_idx - 1, -1, -1):
             df.loc[idx, "final_status"] = final_status
@@ -302,59 +304,43 @@ def run_simulations_in_parallel(num_processes: int, games_per_process: int):
                 print(f"Process {process_index} failed with error: {e}")
 
 
-# def main():
-#     game = Abalone(True)
+def test_2():
+    game = Abalone(True)
 
-#     print("Welcome to Abalone!")
-#     print("Player 1 is RED (R) and Player 2 is YELLOW (Y).\n")
+    print("Welcome to Abalone!")
+    print("Player 1 is RED (R) and Player 2 is YELLOW (Y).\n")
 
-#     computer_player = MCTSPlayer(
-#         max_leaf_explore=1800,
-#         # explore_constant=1,
-#         rollout_depth=25,
-#     )
+    computer_player = MCTSPlayer(
+        max_leaf_explore=1500,
+        explore_constant=0.2,
+        rollout_depth=20,
+    )
 
-#     count = 0
-#     while game.status == ONGOING:
-#         count += 1
-#         # if count >= 35:
-#         #     break
-#         print(game)
-#         print(
-#             "\nCurrent Player:",
-#             "BLACK" if game.player == BLACK else "WHITE",
-#         )
+    count = 0
+    while game.status == ONGOING:
+        count += 1
+        print(game)
+        print(
+            "\nCurrent Player:",
+            "BLACK" if game.player == BLACK else "WHITE",
+        )
 
-#         if game.player == WHITE:
-#             row, col, dir_num = computer_player.get_move(game)
-#         else:
-#             row, col, dir_num = computer_player.get_move(game)
+        if game.player == WHITE:
+            move_idx = computer_player.get_move(game)
+        else:
+            move_idx = computer_player.get_move(game)
 
-#         game.make_move(row, col, dir_num)
+        game.make_move(move_idx)
 
-#     print(game)
-#     if game.status == BLACK:
-#         print("\nBLACK (Player 1) wins!")
-#     elif game.status == WHITE:
-#         print("\nWHITE (Player 2) wins!")
-#     else:
-#         print("\nIt's a draw!")
-
-
-# def read_pickle_test():
-#     working_dir = os.getcwd()
-#     data_dir = os.path.join(working_dir, "data")
-#     file_path = os.path.join(data_dir, "21.02.2025_04:08:09_data.pkl")
-
-#     df = pd.read_pickle(file_path)
-
-#     print(df.loc[100, "game_states"]["board"])
-#     print(df.loc[100, "children_move_idx"])
-#     print(
-#         df.loc[100, "children_move_idx"][0],
-#         idx_to_move(df.loc[100, "children_move_idx"][0]),
-#     )
+    print(game)
+    if game.status == BLACK:
+        print("\nBLACK (Player 1) wins!")
+    elif game.status == WHITE:
+        print("\nWHITE (Player 2) wins!")
+    else:
+        print("\nIt's a draw!")
 
 
 if __name__ == "__main__":
-    run_simulations_in_parallel(6, 10000 // 6)
+    # run_simulations_in_parallel(6, 10000 // 6)
+    test_2()
