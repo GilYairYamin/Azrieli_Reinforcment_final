@@ -121,7 +121,7 @@ class MCTSNode:
             self.get_move(child_idx),
             self.Q,
             self.children_move_idx,
-            self.children_Q,
+            self.children_N,
         )
 
     def is_leaf(self):

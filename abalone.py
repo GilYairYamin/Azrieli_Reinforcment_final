@@ -1,7 +1,6 @@
 import os
 
 import numpy as np
-import torch
 from numba import float64, int8, int16, int64, njit, uint64
 from numba.experimental import jitclass
 from numba.typed import Dict, List
@@ -151,7 +150,7 @@ _MID_ROW_INDEX = int8(BOARD_SIZE // 2)
 _PLAYER_PIECE_AMOUNT = int8(14)
 _MAX_SIMILAR_PUSH = int8(3)
 _MAX_CAPTURES = int8(6)
-_MAX_REPEATING = 1
+_MAX_REPEATING = 2
 
 _DIRECTIONS = np.array(
     [(0, 1), (0, -1), (1, 0), (1, 1), (-1, 0), (-1, -1)], dtype=np.int8
@@ -665,7 +664,7 @@ class Abalone:
 
     def abalone_heuristic(self, res_player=BLACK):
         if self.status != ONGOING:
-            return self.status
+            return self.status if res_player == BLACK else -self.status
 
         material_score = int64(self.captures[BLACK_INDEX]) - int64(
             self.captures[WHITE_INDEX]
@@ -719,6 +718,7 @@ class Abalone:
             count += 1
 
         result = self.abalone_heuristic(res_player)
+
         self.undo_move(count)
         return result
 
@@ -745,9 +745,9 @@ class Abalone:
 
 def request_user_input():
     print("Enter your move in the format: 'A1 E' where:")
-    print(
-        " - The first token is the cell (e.g. A1) with a letter for the column and a number for the row."
-    )
+    result = " - The first token is the cell (e.g. A1) with"
+    result += " a letter for the column and a number for the row."
+    print(result)
     print(" - The second token is the direction (e.g. E, W, SW, etc.).")
     print("Possible directions:", list(_DIR_DICT.keys()))
 

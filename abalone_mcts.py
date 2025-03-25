@@ -2,6 +2,7 @@ import math
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
+from tqdm import tqdm
 
 import numpy as np
 import pandas as pd
@@ -233,75 +234,69 @@ def convert_state_to_np_arr(game_state):
     return np_state
 
 
-def simulate_games(pid, number: int = 100, max_game_length: int = 200):
-    current_dir = os.getcwd()
+def simulate_game(game_id, max_game_length: int = 500):
+    current_dir = os.path.join(os.getcwd(), "local_data")
     data_dir = os.path.join(current_dir, "data")
     os.makedirs(data_dir, exist_ok=True)
-    computer_player = MCTSPlayer(max_leaf_explore=1700, rollout_depth=20)
 
-    for game_id in range(1, number + 1):
-        now = datetime.now()
-        readable_time = now.strftime("%d.%m.%Y_%H-%M-%S")
-        iteration_str = f"started iteration {game_id}"
-        print()
-        print(
-            f"proccess {pid}, current_time: {readable_time}, {iteration_str}"
+    now = datetime.now()
+    readable_time = now.strftime("%d.%m.%Y_%H-%M-%S")
+
+    computer_player = MCTSPlayer(max_leaf_explore=1800, rollout_depth=10)
+    game = Abalone(True)
+
+    df = pd.DataFrame(
+        columns=[
+            "game_states",
+            "Q",
+            "children_move_idx",
+            "children_move_N",
+            "final_status",
+        ]
+    )
+
+    state_idx = 0
+    while game.status == ONGOING and max_game_length != state_idx:
+        move, Q, children_move_idx, children_move_N = (
+            computer_player.get_move_and_data(game)
         )
 
-        game = Abalone(True)
-        df = pd.DataFrame(
-            columns=[
-                "game_states",
-                "Q",
-                "children_move_idx",
-                "children_move_Q",
-                "final_status",
-            ]
-        )
+        game_state = convert_state_to_np_arr(game.encode())
+        df.loc[state_idx, "game_states"] = game_state
+        df.loc[state_idx, "Q"] = Q
+        df.loc[state_idx, "children_move_idx"] = children_move_idx
+        df.loc[state_idx, "children_move_N"] = children_move_N
+        game.make_move(move)
+        state_idx += 1
 
-        state_idx = 0
-        while game.status == ONGOING and max_game_length != state_idx:
-            if (state_idx + 1) % 60 == 0:
-                print(f"pid {pid}, game {game_id}, move {state_idx + 1}")
+    final_status = game.abalone_heuristic(game.player)
 
-            move, Q, children_move_idx, children_move_Q = (
-                computer_player.get_move_and_data(game)
-            )
-            row, col, dir_num = move
-            game_state = convert_state_to_np_arr(game.encode())
-            df.loc[state_idx, "game_states"] = game_state
-            df.loc[state_idx, "Q"] = Q
-            df.loc[state_idx, "children_move_idx"] = children_move_idx
-            df.loc[state_idx, "children_move_Q"] = children_move_Q
-            game.make_move(row, col, dir_num)
-            state_idx += 1
+    for idx in range(state_idx - 1, -1, -1):
+        df.loc[idx, "final_status"] = final_status
+        final_status = -final_status
 
-        final_status = game.abalone_heuristic(game.player)
-
-        for idx in range(state_idx - 1, -1, -1):
-            df.loc[idx, "final_status"] = final_status
-            final_status = -final_status
-
-        file_name = f"p{pid}_game{game_id}_{readable_time}.pickle"
-        file_path = os.path.join(data_dir, file_name)
-        df.to_pickle(file_path)
-        print(f"finished pid {pid}, game {game_id}, {state_idx} moves")
+    file_name = f"game{game_id}_{readable_time}.pickle"
+    file_path = os.path.join(data_dir, file_name)
+    df.to_pickle(file_path)
+    return file_name, state_idx
 
 
-def run_simulations_in_parallel(num_processes: int, games_per_process: int):
+def run_simulations_in_parallel(num_processes: int, num_games: int):
     futures = {}
     with ProcessPoolExecutor(max_workers=num_processes) as executor:
-        for idx in range(num_processes):
-            future = executor.submit(simulate_games, idx, games_per_process)
-            futures[future] = idx
+        for game_idx in range(num_games):
+            future = executor.submit(simulate_game, game_idx, 500)
+            futures[future] = game_idx
 
-        for future in as_completed(futures):
+        for future in tqdm(as_completed(futures), total=len(futures)):
             process_index = futures[future]
             try:
-                future.result()
-                print(f"Process {process_index} completed successfully.")
+                file_name, state_idx = future.result()
+                tqdm.write(
+                    f"game {process_index} completed with {state_idx} moves, and the file {file_name}"
+                )
             except Exception as e:
-                print(f"Process {process_index} failed with error: {e}")
+                tqdm.write(f"game {process_index} failed with error: {e}")
 
 
 def test_2():
@@ -311,9 +306,9 @@ def test_2():
     print("Player 1 is RED (R) and Player 2 is YELLOW (Y).\n")
 
     computer_player = MCTSPlayer(
-        max_leaf_explore=1500,
-        explore_constant=0.2,
-        rollout_depth=20,
+        max_leaf_explore=1700,
+        explore_constant=1,
+        rollout_depth=10,
     )
 
     count = 0
@@ -340,7 +335,8 @@ def test_2():
     else:
         print("\nIt's a draw!")
 
+    print(f"finished with {count} moves")
+
 
 if __name__ == "__main__":
-    # run_simulations_in_parallel(6, 10000 // 6)
-    test_2()
+    run_simulations_in_parallel(5, 10000)

@@ -59,13 +59,14 @@ class AbaloneNetwork(nn.Module):
         )
 
         self.fc1 = nn.Linear(num_valid_cells * 16, 128, dtype=torch.float64)
-        self.fc2 = nn.Linear(128 + 3, 256)
-        self.fc3 = nn.Linear(256, 128)
+        self.fc2 = nn.Linear(128 + 3, 256, dtype=torch.float64)
+        self.fc3 = nn.Linear(256, 128, dtype=torch.float64)
         self.relu = nn.ReLU()
 
         self.policy_head = nn.Linear(
             128, TECHNIAL_MOVE_AMOUNT, dtype=torch.float64
         )
+        
         self.softmax = nn.Softmax(dim=-1)
 
         self.value_head = nn.Linear(128, 1, dtype=torch.float64)
@@ -94,7 +95,7 @@ class AbaloneNetwork(nn.Module):
 
         policy_logits = self.policy_head(x)
 
-        largest_negative_torch = torch.finfo(torch.float32).min
+        largest_negative_torch = torch.finfo(torch.float64).min
         policy_logits = policy_logits.masked_fill(
             ~legal_moves_tensor, largest_negative_torch
         )

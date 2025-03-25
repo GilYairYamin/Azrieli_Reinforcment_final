@@ -15,7 +15,7 @@ def decode_board_state(state_data):
     white_captures = np_board_state["white_captures"]
     player = np_board_state["current_player"]
 
-    children_move_Q = state_data["children_move_Q"]
+    children_move_N = state_data["children_move_N"]
     children_move_idx = state_data["children_move_idx"]
     value = state_data["final_status"]
 
@@ -31,7 +31,7 @@ def decode_board_state(state_data):
 
     for index in range(len(children_move_idx)):
         child_idx = children_move_idx[index]
-        policy_temp[child_idx] = children_move_Q[index]
+        policy_temp[child_idx] = children_move_N[index]
         legal_move_mask[child_idx] = 1
 
     policy_tensor = torch.from_numpy(policy_temp)
@@ -39,13 +39,14 @@ def decode_board_state(state_data):
     policy = softmax_tensor.numpy()
 
     board_state = (board, black_captures, white_captures, player)
+
     return board_state, legal_move_mask, policy, value
 
 
 def build_training_data():
     root_folder = os.path.join(os.getcwd(), "local_data")
     data_folder = os.path.join(root_folder, "data")
-    res_data_folder = os.path.join(root_folder, "result data")
+    res_data_folder = os.path.join(root_folder, "training data")
     os.makedirs(res_data_folder, exist_ok=True)
     file_list = os.listdir(data_folder)
 
