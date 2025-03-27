@@ -43,7 +43,7 @@ def decode_board_state(state_data):
     return board_state, legal_move_mask, policy, value
 
 
-def build_training_data():
+def build_training_data_from_mcts():
     root_folder = os.path.join(os.getcwd(), "local_data")
     data_folder = os.path.join(root_folder, "data")
     res_data_folder = os.path.join(root_folder, "training data")
@@ -85,6 +85,34 @@ def build_training_data():
         data_snippet.to_pickle(file_path)
 
 
+def build_training_data_from_puct(data_folder, res_fle_name):
+    file_list = os.listdir(data_folder)
+
+    columns = ["board_state", "legal_move_mask", "policy", "value"]
+    data_snippet = pd.DataFrame(columns=columns)
+
+    name_idx = 0
+    for file_name in tqdm(file_list):
+        file_path = os.path.join(data_folder, file_name)
+        try:
+            np_data: pd.DataFrame = pd.read_pickle(file_path)
+        except Exception:
+            continue
+
+        data_snippet = pd.concat([data_snippet, np_data], axis=0)
+
+    data_snippet.to_pickle(res_fle_name)
+
+
 # build_training_data()
 if __name__ == "__main__":
-    build_training_data()
+    # build_training_data_from_mcts()
+    root_data_folder = os.path.join(os.getcwd(), "local_data", "puct data")
+    data_folder = os.path.join(
+        root_data_folder, "iteration 0 - 27.03.2025_02-55-07"
+    )
+    res_file_name = os.path.join(
+        root_data_folder, "a.pickle"
+    )
+    
+    build_training_data_from_puct(data_folder, res_file_name)

@@ -1,7 +1,7 @@
 import numpy as np
 
-from abalone import ONGOING, Abalone, move_to_idx
-from numba import boolean, float64, int8, int16, int64, uint64
+from abalone import ONGOING, Abalone
+from numba import boolean, float64, int16, int64, uint64
 from numba.experimental import jitclass
 
 
@@ -72,13 +72,20 @@ class PUCTNode:
         explore = explore_constant * child_P * np.sqrt(self.N) / (child_N + 1)
         return child_Q + explore
 
-    def pick_child(self, explore_constant):
+    def pick_child_by_visits(self):
+        max_idx = 0
+        for i in range(len(self.children_N)):
+            if self.children_N[max_idx] < self.children_N[i]:
+                max_idx = i
+        return max_idx
+
+    def pick_child_by_uct(self, explore_constant):
         if self.children_visited_amount <= 0:
             return -1
 
-        max_val = -500000
-        max_idx = -1
-        for child_idx in range(self.children_visited_amount):
+        max_val = self._calc_UCT(0, explore_constant)
+        max_idx = 0
+        for child_idx in range(1, self.children_visited_amount):
             if self.is_in_current_path[child_idx]:
                 continue
 

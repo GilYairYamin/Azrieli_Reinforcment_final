@@ -13,37 +13,7 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 
-class AbalonePretrainingDataset(Dataset):
-    def __init__(self, pickle_file):
-        # Load the DataFrame from the pickle file
-        self.data = pd.read_pickle(pickle_file)
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        row = self.data.iloc[idx]
-        board_state = row["board_state"]
-        legal_move_mask = row["legal_move_mask"]
-        target_policy = row["policy"]
-        target_value = row["value"]
-
-        board_tensor, extra_tensor, legal_move_tensor = (
-            convert_encoded_board_to_tensors(board_state, legal_move_mask)
-        )
-        target_policy = torch.tensor(target_policy, dtype=torch.float64)
-        target_value = torch.tensor([target_value], dtype=torch.float64)
-
-        return (
-            board_tensor,
-            extra_tensor,
-            legal_move_tensor,
-            target_policy,
-            target_value,
-        )
-
-
-class AbalonePUCTDataset(Dataset):
+class AbaloneDataset(Dataset):
     def __init__(self, pickle_file):
         # Load the DataFrame from the pickle file
         self.data = pd.read_pickle(pickle_file)
@@ -145,7 +115,7 @@ def train_on_pickle_files(
 
     for pickle_file in tqdm(pickle_files, desc="files"):
         # tqdm.write(f"\nTraining on file: {pickle_file}\n")
-        dataset = AbalonePretrainingDataset(pickle_file)
+        dataset = AbaloneDataset(pickle_file)
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         model = train_network(
             model,
@@ -157,13 +127,12 @@ def train_on_pickle_files(
     return model
 
 
-def pre_train_model():
-    res_data_folder = os.path.join(os.getcwd(), "local_data", "training data")
+def pre_train_model(data_folder):
     model = AbaloneNetwork(load_model=True)
 
     trained_model = train_on_pickle_files(
         model,
-        res_data_folder,
+        data_folder,
         batch_size=32,
         num_epochs=5,
         learning_rate=1e-2,
@@ -174,4 +143,5 @@ def pre_train_model():
 
 
 if __name__ == "__main__":
-    pre_train_model()
+    res_data_folder = os.path.join(os.getcwd(), "local_data", "training data")
+    pre_train_model(res_data_folder)
