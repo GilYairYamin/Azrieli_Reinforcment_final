@@ -19,6 +19,7 @@ def decode_board_state(state_data):
     children_move_idx = state_data["children_move_idx"]
     value = state_data["final_status"]
 
+
     smallest_negative = np.finfo(np.float64).min
     policy_temp = np.full(
         TECHNIAL_MOVE_AMOUNT, smallest_negative, dtype=np.float64
@@ -111,8 +112,6 @@ if __name__ == "__main__":
     data_folder = os.path.join(
         root_data_folder, "iteration 0 - 27.03.2025_02-55-07"
     )
-    res_file_name = os.path.join(
-        root_data_folder, "a.pickle"
-    )
-    
+    res_file_name = os.path.join(root_data_folder, "a.pickle")
+
     build_training_data_from_puct(data_folder, res_file_name)

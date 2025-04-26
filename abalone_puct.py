@@ -18,7 +18,6 @@ from abalone_neural_network import (
     convert_encoded_board_to_tensors,
 )
 from abalone_puct_node import PUCTNode
-
 from train_model import train_network
 
 
