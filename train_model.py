@@ -32,8 +32,8 @@ class AbaloneDataset(Dataset):
             convert_encoded_board_to_tensors(board_state, legal_move_mask)
         )
 
-        target_policy = torch.tensor(target_policy, dtype=torch.float64)
-        target_value = torch.tensor([target_value], dtype=torch.float64)
+        target_policy = torch.tensor(target_policy, dtype=torch.float32)
+        target_value = torch.tensor([target_value], dtype=torch.float32)
 
         return (
             board_tensor,

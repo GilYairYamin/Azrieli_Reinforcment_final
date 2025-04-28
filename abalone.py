@@ -1,7 +1,7 @@
 import os
 
 import numpy as np
-from numba import float64, int8, int16, int64, njit, uint64
+from numba import float32, int8, int16, int64, njit, uint64
 from numba.experimental import jitclass
 from numba.typed import Dict, List
 from numba.types import DictType
@@ -680,7 +680,7 @@ class Abalone:
             row_start = _ROW_START[row]
             row_end = _ROW_END[row]
             # Approximate the center column for this row.
-            center_col = float64(row_start + row_end) / 2.0
+            center_col = float32(row_start + row_end) / 2.0
             for col in range(row_start, row_end):
                 piece = self.board[row, col]
                 p = _piece_to_player(piece)
@@ -694,9 +694,9 @@ class Abalone:
         central_score = central_black - central_white
 
         raw_score = (
-            float64(1000) * float64(material_score)
-            + float64(10) * float64(mobility_score)
-            + float64(1) * float64(central_score)
+            float32(1000) * float32(material_score)
+            + float32(10) * float32(mobility_score)
+            + float32(1) * float32(central_score)
         )
 
         # Normalize the raw score to the range [-1, 1] using tanh.

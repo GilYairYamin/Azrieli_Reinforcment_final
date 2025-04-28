@@ -237,9 +237,9 @@ class PUCTPlayer:
 
             propogate(move_stack, tree_dict, game, current_node, value)
 
-        largest_negative_torch = np.finfo(np.float64).min
+        largest_negative_torch = np.finfo(np.float32).min
         results_policy = np.full(
-            TECHNIAL_MOVE_AMOUNT, largest_negative_torch, dtype=np.float64
+            TECHNIAL_MOVE_AMOUNT, largest_negative_torch, dtype=np.float32
         )
 
         for i in range(len(root_node.children_N)):

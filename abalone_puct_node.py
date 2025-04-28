@@ -1,20 +1,20 @@
 import numpy as np
 
 from abalone import ONGOING, Abalone
-from numba import boolean, float64, int16, int64, uint64
+from numba import boolean, float32, int16, int64, uint64
 from numba.experimental import jitclass
 
 
 _abalone_node_types = [
     ("N", int16),
-    ("Q", float64),
+    ("Q", float32),
     ("is_terminal", boolean),
     ("is_fully_expanded", boolean),
     ("children_visited_amount", int16),
     ("children_move_idx", int16[:]),
     ("children_N", int16[:]),
-    ("children_Q", float64[:]),
-    ("children_P", float64[:]),
+    ("children_Q", float32[:]),
+    ("children_P", float32[:]),
     ("children_key", uint64[:]),
     ("is_in_current_path", boolean[:]),
 ]
@@ -24,7 +24,7 @@ _abalone_node_types = [
 class PUCTNode:
     def __init__(self, game: Abalone):
         self.N = int16(0)
-        self.Q = float64(0)
+        self.Q = float32(0)
         self.is_terminal = boolean(game.status != ONGOING)
         self.is_fully_expanded = boolean(False)
         self.children_visited_amount = int16(0)
@@ -38,8 +38,8 @@ class PUCTNode:
             self.children_move_idx = np.zeros(0, dtype=np.int16)
 
         self.children_N = np.zeros(size, dtype=np.int16)
-        self.children_Q = np.zeros(size, dtype=np.float64)
-        self.children_P = np.zeros(size, dtype=np.float64)
+        self.children_Q = np.zeros(size, dtype=np.float32)
+        self.children_P = np.zeros(size, dtype=np.float32)
         self.children_key = np.zeros(size, dtype=np.uint64)
         self.is_in_current_path = np.zeros(size, dtype=np.bool)
 

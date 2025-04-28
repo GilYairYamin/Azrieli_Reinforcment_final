@@ -19,12 +19,12 @@ def decode_board_state(state_data):
     children_move_idx = state_data["children_move_idx"]
     value = state_data["final_status"]
 
-    smallest_negative = np.finfo(np.float64).min
+    smallest_negative = np.finfo(np.float32).min
     policy_temp = np.full(
-        TECHNIAL_MOVE_AMOUNT, smallest_negative, dtype=np.float64
+        TECHNIAL_MOVE_AMOUNT, smallest_negative, dtype=np.float32
     )
     policy_temp = np.full(
-        TECHNIAL_MOVE_AMOUNT, smallest_negative, dtype=np.float64
+        TECHNIAL_MOVE_AMOUNT, smallest_negative, dtype=np.float32
     )
 
     legal_move_mask = np.zeros(TECHNIAL_MOVE_AMOUNT, dtype=np.int8)

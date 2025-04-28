@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 import numpy as np
 import pandas as pd
-from numba import float64, int64, njit, uint64
+from numba import float32, int64, njit, uint64
 from numba.experimental import jitclass
 from numba.typed import Dict
 from numba.types import DictType, np_uint64
@@ -189,7 +189,7 @@ class MCTSPlayer:
         return get_move_and_data(
             int64(self.max_leaf_explore),
             int64(self.rollout_depth),
-            float64(self.explore_constant),
+            float32(self.explore_constant),
             original_game,
         )
 

@@ -16,12 +16,12 @@ def convert_encoded_board_to_tensors(
         device = torch.device("cpu")
 
     board, black_captures, white_captures, player = board_state
-    board_tensor = torch.tensor(board, dtype=torch.float64, device=device)
+    board_tensor = torch.tensor(board, dtype=torch.float32, device=device)
     extra_arr = np.array(
         [black_captures, white_captures, player],
-        dtype=np.float64,
+        dtype=np.float32,
     )
-    extra_tensor = torch.tensor(extra_arr, dtype=torch.float64, device=device)
+    extra_tensor = torch.tensor(extra_arr, dtype=torch.float32, device=device)
 
     if single_state:
         board_tensor = board_tensor.unsqueeze(0)
@@ -45,30 +45,30 @@ class AbaloneNetwork(nn.Module):
         num_valid_cells = self.board_mask.sum().item()
 
         self.conv1 = nn.Conv2d(
-            2, 4, 3, stride=1, padding=1, dtype=torch.float64
+            2, 4, 3, stride=1, padding=1, dtype=torch.float32
         )
         self.conv2 = nn.Conv2d(
-            4, 8, 3, stride=1, padding=1, dtype=torch.float64
+            4, 6, 3, stride=1, padding=1, dtype=torch.float32
         )
         self.conv3 = nn.Conv2d(
-            8, 16, 3, stride=1, padding=1, dtype=torch.float64
+            6, 8, 3, stride=1, padding=1, dtype=torch.float32
         )
         self.conv4 = nn.Conv2d(
-            16, 32, 3, stride=1, padding=1, dtype=torch.float64
+            8, 10, 3, stride=1, padding=1, dtype=torch.float32
         )
 
-        self.fc1 = nn.Linear(num_valid_cells * 32, 256, dtype=torch.float64)
-        self.fc2 = nn.Linear(256 + 3, 256, dtype=torch.float64)
-        self.fc3 = nn.Linear(256, 256, dtype=torch.float64)
+        self.fc1 = nn.Linear(num_valid_cells * 10, 64, dtype=torch.float32)
+        self.fc2 = nn.Linear(64 + 3, 64, dtype=torch.float32)
+        self.fc3 = nn.Linear(64, 64, dtype=torch.float32)
         self.relu = nn.ReLU()
 
         self.policy_head = nn.Linear(
-            256, TECHNIAL_MOVE_AMOUNT, dtype=torch.float64
+            64, TECHNIAL_MOVE_AMOUNT, dtype=torch.float32
         )
 
         self.softmax = nn.Softmax(dim=-1)
 
-        self.value_head = nn.Linear(256, 1, dtype=torch.float64)
+        self.value_head = nn.Linear(64, 1, dtype=torch.float32)
         self.tanh = nn.Tanh()
 
         if load_model:
@@ -82,7 +82,7 @@ class AbaloneNetwork(nn.Module):
         x = self.relu(self.conv4(x))
 
         batch_size = x.size(0)
-        x = x.view(batch_size, 32, -1)
+        x = x.view(batch_size, 10, -1)
         x = x[:, :, self.board_mask]
         x = x.flatten(start_dim=1)
         x = self.relu(self.fc1(x))
@@ -94,7 +94,7 @@ class AbaloneNetwork(nn.Module):
 
         policy_logits = self.policy_head(x)
 
-        largest_negative_torch = torch.finfo(torch.float64).min
+        largest_negative_torch = torch.finfo(torch.float32).min
         policy_logits = policy_logits.masked_fill(
             ~legal_moves_tensor, largest_negative_torch
         )
