@@ -1,4 +1,3 @@
-import math
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
@@ -21,7 +20,7 @@ from abalone_puct_node import PUCTNode
 
 
 @njit
-def add_dirichlet_noise(policy, epsilon=0.25, alpha=0.03):
+def add_dirichlet_noise(policy, epsilon=1, alpha=0.03):
     # Sample noise from a Dirichlet distribution.
     noise = np.random.dirichlet([alpha] * len(policy))
 
@@ -160,17 +159,17 @@ def propogate(
 class PUCTPlayer:
     def __init__(
         self,
-        max_leaf_explore: int = 800,
-        explore_constant: float = math.sqrt(2),
-        noise_level: int = 0,
-        max_noise_e: float = 0.25,
-        max_noise_alpha: float = 0.06,
+        max_leaf_explore: int = 750,
+        explore_constant: float = 1,
+        noise_level: int = 5,
+        noise_e: float = 0.25,
+        noise_alpha: float = 0.03,
     ):
         self.max_leaf_explore = max_leaf_explore
         self.explore_constant = explore_constant
         self.noise_level = noise_level
-        self.max_noise_e = max_noise_e
-        self.noise_alpha = max_noise_alpha
+        self.noise_e = noise_e
+        self.noise_alpha = noise_alpha
 
         self.model = AbaloneNetwork()
         self.device = torch.device(
@@ -179,23 +178,24 @@ class PUCTPlayer:
         self.model = self.model.to(self.device)
 
     def get_value_and_policy(self, game, current_node):
-        value = current_node.Q
         if current_node.is_fully_expanded:
-            return None, value
+            return None, current_node.Q
 
         board_state = game.encode()
         move_mask = game.get_legal_moves_mask()
 
         board_tensor, extra_tensor, mask_tensor = (
             convert_encoded_board_to_tensors(
-                board_state, move_mask, single_state=True, device=self.device
+                board_state,
+                move_mask,
+                single_state=True,
+                device=self.device,
             )
         )
 
-        with torch.no_grad():
-            policy_tensor, value_tensor = self.model.forward(
-                board_tensor, extra_tensor, mask_tensor
-            )
+        policy_tensor, value_tensor = self.model.forward(
+            board_tensor, extra_tensor, mask_tensor
+        )
 
         value = value_tensor.item()
         np_policy = policy_tensor.cpu().detach().numpy().flatten()
@@ -205,83 +205,101 @@ class PUCTPlayer:
         if original_game.status != ONGOING:
             return None
 
-        game = original_game.copy()
-        move_stack = StateClass()
-        root_key = uint64(game.current_hash)
-        root_node: PUCTNode = PUCTNode(game)
-        tree_dict = Dict.empty(uint64, PUCTNode.class_type.instance_type)
-        tree_dict[root_key] = root_node
+        with torch.no_grad():
+            game = original_game.copy()
+            move_stack = StateClass()
+            root_key = uint64(game.current_hash)
+            root_node: PUCTNode = PUCTNode(game)
+            tree_dict = Dict.empty(uint64, PUCTNode.class_type.instance_type)
+            tree_dict[root_key] = root_node
 
-        np_policy, value = self.get_value_and_policy(game, root_node)
-        if train:
-            np_policy = add_dirichlet_noise(np_policy, self.max_noise_e, 0.03)
-        root_node.set_values_from_net_result(np_policy, value)
+            np_policy, value = self.get_value_and_policy(game, root_node)
+            if train:
+                np_policy = add_dirichlet_noise(np_policy)
 
-        for _ in range(self.max_leaf_explore):
-            current_node = select(
-                move_stack, tree_dict, game, root_key, self.explore_constant
+            root_node.set_values_from_net_result(np_policy, value)
+            for _ in range(self.max_leaf_explore):
+                current_node = select(
+                    move_stack,
+                    tree_dict,
+                    game,
+                    root_key,
+                    self.explore_constant,
+                )
+                current_node = expand(
+                    move_stack, tree_dict, game, current_node
+                )
+
+                np_policy, value = self.get_value_and_policy(
+                    game, current_node
+                )
+
+                if np_policy is not None:
+                    level = move_stack.size
+                    if train and level < self.noise_level:
+                        np_policy = add_dirichlet_noise(
+                            np_policy,
+                            self.noise_e / (level + 1),
+                            self.noise_alpha,
+                        )
+                    current_node.set_values_from_net_result(np_policy, value)
+
+                propogate(move_stack, tree_dict, game, current_node, value)
+
+            largest_negative_torch = np.finfo(np.float32).min
+            results_policy = np.full(
+                TECHNIAL_MOVE_AMOUNT, largest_negative_torch, dtype=np.float32
             )
-            current_node = expand(move_stack, tree_dict, game, current_node)
 
-            np_policy, value = self.get_value_and_policy(game, current_node)
+            for i in range(len(root_node.children_N)):
+                child_idx = root_node.children_move_idx[i]
+                child_N = root_node.children_N[i]
+                results_policy[child_idx] = child_N
 
-            if np_policy is not None:
-                level = move_stack.size
-                if train and level < self.noise_level:
-                    np_policy = add_dirichlet_noise(
-                        np_policy,
-                        self.max_noise_e / (level + 1),
-                        self.noise_alpha,
-                    )
-                current_node.set_values_from_net_result(np_policy, value)
+            policy_tensor = torch.from_numpy(results_policy)
+            policy_tensor = policy_tensor.softmax(-1)
+            np_policy = policy_tensor.detach().numpy()
 
-            propogate(move_stack, tree_dict, game, current_node, value)
-
-        largest_negative_torch = np.finfo(np.float32).min
-        results_policy = np.full(
-            TECHNIAL_MOVE_AMOUNT, largest_negative_torch, dtype=np.float32
-        )
-
-        for i in range(len(root_node.children_N)):
-            child_idx = root_node.children_move_idx[i]
-            child_N = root_node.children_N[i]
-            results_policy[child_idx] = child_N
-
-        policy_tensor = torch.from_numpy(results_policy)
-        policy_tensor = policy_tensor.softmax(-1)
-        np_policy = policy_tensor.detach().numpy()
-
-        best_child_idx = root_node.pick_child_by_visits()
+            best_child_idx = root_node.pick_child_by_visits()
         return root_node.get_move(best_child_idx), np_policy
 
     def get_move(self, original_game: Abalone):
         if original_game.status != ONGOING:
             return None
 
-        game = original_game.copy()
-        move_stack = StateClass()
-        root_key = uint64(game.current_hash)
-        root_node: PUCTNode = PUCTNode(game)
-        tree_dict = Dict.empty(uint64, PUCTNode.class_type.instance_type)
-        tree_dict[root_key] = root_node
+        with torch.no_grad():
+            game = original_game.copy()
+            move_stack = StateClass()
+            root_key = uint64(game.current_hash)
+            root_node: PUCTNode = PUCTNode(game)
+            tree_dict = Dict.empty(uint64, PUCTNode.class_type.instance_type)
+            tree_dict[root_key] = root_node
 
-        np_policy, value = self.get_value_and_policy(game, root_node)
-        root_node.set_values_from_net_result(np_policy, value)
+            np_policy, value = self.get_value_and_policy(game, root_node)
+            root_node.set_values_from_net_result(np_policy, value)
 
-        for _ in range(self.max_leaf_explore):
-            current_node = select(
-                move_stack, tree_dict, game, root_key, self.explore_constant
-            )
-            current_node = expand(move_stack, tree_dict, game, current_node)
+            for _ in range(self.max_leaf_explore):
+                current_node = select(
+                    move_stack,
+                    tree_dict,
+                    game,
+                    root_key,
+                    self.explore_constant,
+                )
+                current_node = expand(
+                    move_stack, tree_dict, game, current_node
+                )
 
-            np_policy, value = self.get_value_and_policy(game, current_node)
+                np_policy, value = self.get_value_and_policy(
+                    game, current_node
+                )
 
-            if np_policy is not None:
-                current_node.set_values_from_net_result(np_policy, value)
+                if np_policy is not None:
+                    current_node.set_values_from_net_result(np_policy, value)
 
-            propogate(move_stack, tree_dict, game, current_node, value)
+                propogate(move_stack, tree_dict, game, current_node, value)
 
-        best_child_idx = root_node.pick_child_by_uct(0)
+            best_child_idx = root_node.pick_child_by_uct(0)
         return root_node.get_move(best_child_idx)
 
 
@@ -295,6 +313,9 @@ def simulate_game(res_folder, game_id, max_game_depth=-1):
     training_list = []
     while game.status == ONGOING and move_amount != max_game_depth:
         move_amount += 1
+        if move_amount % 50 == 0:
+            tqdm.write(f"game {game_id} at move {move_amount}")
+
         move, np_policy = computer_player.get_move_and_policy(game)
         training_list.append(
             (game.encode(), game.get_legal_moves_mask(), np_policy)
