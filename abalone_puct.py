@@ -338,9 +338,9 @@ def simulate_games_processes(res_folder, executor, num_games, max_depth=-1):
         process_index = futures[future]
         try:
             file_name, state_idx = future.result()
-            tqdm.write(
-                f"game {process_index} completed with {state_idx} moves, and the file {file_name}"
-            )
+            str_start = f"game {process_index} completed with {state_idx}"
+            str_end = f"moves, and the file {file_name}"
+            tqdm.write(f"{str_start} {str_end}")
         except Exception as e:
             tqdm.write(f"game {process_index} failed with error: {e}")
 
@@ -350,9 +350,9 @@ def simulate_games_single(res_folder, num_games, max_depth=-1):
         file_name, state_idx = simulate_game(
             res_folder, i, max_game_depth=max_depth
         )
-        tqdm.write(
-            f"game {i} completed with {state_idx} moves, and the file {file_name}"
-        )
+        str_start = f"game {i} completed with {state_idx}"
+        str_end = f"moves, and the file {file_name}"
+        tqdm.write(f"{str_start} {str_end}")
 
 
 def generate_data_and_train_network(
@@ -385,9 +385,11 @@ def generate_data_and_train_network(
                 process_index = futures[future]
                 try:
                     file_name, state_idx = future.result()
-                    tqdm.write(
-                        f"game {process_index} completed with {state_idx} moves, and the file {file_name}"
+                    str_start = (
+                        f"game {process_index} completed with {state_idx}"
                     )
+                    str_end = f"moves, and the file {file_name}"
+                    tqdm.write(f"{str_start} {str_end}")
                 except Exception as e:
                     tqdm.write(f"game {process_index} failed with error: {e}")
 

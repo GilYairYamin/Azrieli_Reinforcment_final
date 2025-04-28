@@ -293,9 +293,9 @@ def run_simulations_in_parallel(num_processes: int, num_games: int):
             process_index = futures[future]
             try:
                 file_name, state_idx = future.result()
-                tqdm.write(
-                    f"game {process_index} completed with {state_idx} moves, and the file {file_name}"
-                )
+                str_start = f"game {process_index} completed with {state_idx}"
+                str_end = f"moves, and the file {file_name}"
+                tqdm.write(f"{str_start} {str_end}")
             except Exception as e:
                 tqdm.write(f"game {process_index} failed with error: {e}")
 

@@ -1,16 +1,16 @@
 import os
+
 import pandas as pd
-
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
+
 from abalone_neural_network import (
     AbaloneNetwork,
     convert_encoded_board_to_tensors,
 )
-from torch.utils.data import Dataset, DataLoader
-from tqdm import tqdm
 
 
 class AbaloneDataset(Dataset):
@@ -126,7 +126,7 @@ def train_on_pickle_file(
     model = AbaloneNetwork()
     dataset = AbaloneDataset(data_file_full_path)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    
+
     trained_model = train_network(
         model,
         dataloader,

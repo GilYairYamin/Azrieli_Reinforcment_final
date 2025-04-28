@@ -45,21 +45,11 @@ class AbaloneNetwork(nn.Module):
         num_valid_cells = self.board_mask.sum().item()
 
         self.conv1 = nn.Conv2d(
-            2, 4, 3, stride=1, padding=1, dtype=torch.float32
-        )
-        self.conv2 = nn.Conv2d(
-            4, 6, 3, stride=1, padding=1, dtype=torch.float32
-        )
-        self.conv3 = nn.Conv2d(
-            6, 8, 3, stride=1, padding=1, dtype=torch.float32
-        )
-        self.conv4 = nn.Conv2d(
-            8, 10, 3, stride=1, padding=1, dtype=torch.float32
+            2, 8, 5, stride=1, padding=2, dtype=torch.float32
         )
 
-        self.fc1 = nn.Linear(num_valid_cells * 10, 64, dtype=torch.float32)
+        self.fc1 = nn.Linear(num_valid_cells * 8, 64, dtype=torch.float32)
         self.fc2 = nn.Linear(64 + 3, 64, dtype=torch.float32)
-        self.fc3 = nn.Linear(64, 64, dtype=torch.float32)
         self.relu = nn.ReLU()
 
         self.policy_head = nn.Linear(
@@ -77,20 +67,17 @@ class AbaloneNetwork(nn.Module):
     def forward(self, board_tensor, extra_tensor, legal_moves_tensor):
         x = board_tensor
         x = self.relu(self.conv1(x))
-        x = self.relu(self.conv2(x))
-        x = self.relu(self.conv3(x))
-        x = self.relu(self.conv4(x))
 
         batch_size = x.size(0)
-        x = x.view(batch_size, 10, -1)
+        x = x.view(batch_size, 8, -1)
         x = x[:, :, self.board_mask]
         x = x.flatten(start_dim=1)
+
         x = self.relu(self.fc1(x))
 
         x = torch.cat([x, extra_tensor], dim=1)
 
         x = self.relu(self.fc2(x))
-        x = self.relu(self.fc3(x))
 
         policy_logits = self.policy_head(x)
 
