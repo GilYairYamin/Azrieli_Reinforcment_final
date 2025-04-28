@@ -324,7 +324,7 @@ def simulate_game(res_folder, game_id, max_game_depth=-1):
     return file_name, move_amount
 
 
-def simulate_games(res_folder, executor, num_games, max_depth=-1):
+def simulate_games_processes(res_folder, executor, num_games, max_depth=-1):
     os.makedirs(res_folder, exist_ok=True)
     futures = {}
     for game_idx in range(num_games):
@@ -343,6 +343,16 @@ def simulate_games(res_folder, executor, num_games, max_depth=-1):
             )
         except Exception as e:
             tqdm.write(f"game {process_index} failed with error: {e}")
+
+
+def simulate_games_single(res_folder, num_games, max_depth=-1):
+    for i in tqdm(range(num_games)):
+        file_name, state_idx = simulate_game(
+            res_folder, i, max_game_depth=max_depth
+        )
+        tqdm.write(
+            f"game {i} completed with {state_idx} moves, and the file {file_name}"
+        )
 
 
 def generate_data_and_train_network(
@@ -388,7 +398,7 @@ def play_game():
     player = PUCTPlayer()
     game = Abalone(True)
     print(game.to_string())
-    
+
     while game.status == ONGOING:
         move = player.get_move(game)
         game.make_move(move)

@@ -126,6 +126,7 @@ def train_on_pickle_file(
     model = AbaloneNetwork()
     dataset = AbaloneDataset(data_file_full_path)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    
     trained_model = train_network(
         model,
         dataloader,
