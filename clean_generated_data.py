@@ -19,7 +19,6 @@ def decode_board_state(state_data):
     children_move_idx = state_data["children_move_idx"]
     value = state_data["final_status"]
 
-
     smallest_negative = np.finfo(np.float64).min
     policy_temp = np.full(
         TECHNIAL_MOVE_AMOUNT, smallest_negative, dtype=np.float64
@@ -47,7 +46,7 @@ def decode_board_state(state_data):
 def build_training_data_from_mcts():
     root_folder = os.path.join(os.getcwd(), "local_data")
     data_folder = os.path.join(root_folder, "data")
-    res_data_folder = os.path.join(root_folder, "training data")
+    res_data_folder = os.path.join(root_folder, "pre-training data")
     os.makedirs(res_data_folder, exist_ok=True)
     file_list = os.listdir(data_folder)
 
@@ -86,13 +85,12 @@ def build_training_data_from_mcts():
         data_snippet.to_pickle(file_path)
 
 
-def build_training_data_from_puct(data_folder, res_fle_name):
+def build_training_data_from_puct(data_folder, res_file_full_path):
     file_list = os.listdir(data_folder)
 
     columns = ["board_state", "legal_move_mask", "policy", "value"]
     data_snippet = pd.DataFrame(columns=columns)
 
-    name_idx = 0
     for file_name in tqdm(file_list):
         file_path = os.path.join(data_folder, file_name)
         try:
@@ -102,7 +100,7 @@ def build_training_data_from_puct(data_folder, res_fle_name):
 
         data_snippet = pd.concat([data_snippet, np_data], axis=0)
 
-    data_snippet.to_pickle(res_fle_name)
+    data_snippet.to_pickle(res_file_full_path)
 
 
 # build_training_data()

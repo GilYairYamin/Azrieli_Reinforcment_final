@@ -12,13 +12,12 @@ from numba.typed import Dict
 from numba.types import DictType, np_uint64
 from tqdm import tqdm
 
-from abalone import BLACK, ONGOING, TECHNIAL_MOVE_AMOUNT, Abalone
+from abalone import ONGOING, TECHNIAL_MOVE_AMOUNT, Abalone
 from abalone_neural_network import (
     AbaloneNetwork,
     convert_encoded_board_to_tensors,
 )
 from abalone_puct_node import PUCTNode
-from train_model import train_network
 
 
 @njit
@@ -161,7 +160,7 @@ def propogate(
 class PUCTPlayer:
     def __init__(
         self,
-        max_leaf_explore: int = 1000,
+        max_leaf_explore: int = 800,
         explore_constant: float = math.sqrt(2),
         noise_level: int = 0,
         max_noise_e: float = 0.25,
@@ -169,10 +168,15 @@ class PUCTPlayer:
     ):
         self.max_leaf_explore = max_leaf_explore
         self.explore_constant = explore_constant
-        self.model = AbaloneNetwork()
         self.noise_level = noise_level
         self.max_noise_e = max_noise_e
         self.noise_alpha = max_noise_alpha
+
+        self.model = AbaloneNetwork()
+        self.device = torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
+        self.model = self.model.to(self.device)
 
     def get_value_and_policy(self, game, current_node):
         value = current_node.Q
@@ -184,7 +188,7 @@ class PUCTPlayer:
 
         board_tensor, extra_tensor, mask_tensor = (
             convert_encoded_board_to_tensors(
-                board_state, move_mask, single_state=True
+                board_state, move_mask, single_state=True, device=self.device
             )
         )
 
@@ -194,8 +198,7 @@ class PUCTPlayer:
             )
 
         value = value_tensor.item()
-
-        np_policy = policy_tensor.detach().numpy().flatten()
+        np_policy = policy_tensor.cpu().detach().numpy().flatten()
         return np_policy, value
 
     def get_move_and_policy(self, original_game: Abalone, train=True):
@@ -285,9 +288,8 @@ class PUCTPlayer:
 def simulate_game(res_folder, game_id, max_game_depth=-1):
     os.makedirs(res_folder, exist_ok=True)
 
-    computer_player = PUCTPlayer(max_leaf_explore=1000, explore_constant=1)
-
     game = Abalone(True)
+    computer_player = PUCTPlayer()
 
     move_amount = 0
     training_list = []
@@ -322,25 +324,25 @@ def simulate_game(res_folder, game_id, max_game_depth=-1):
     return file_name, move_amount
 
 
-def simulate_games(res_folder, num_processes, num_games, max_depth=-1):
+def simulate_games(res_folder, executor, num_games, max_depth=-1):
     os.makedirs(res_folder, exist_ok=True)
     futures = {}
-    with ProcessPoolExecutor(max_workers=num_processes) as executor:
-        for game_idx in range(num_games):
-            future = executor.submit(
-                simulate_game, res_folder, game_idx, max_depth
-            )
-            futures[future] = game_idx
+    for game_idx in range(num_games):
+        future = executor.submit(
+            simulate_game, res_folder, game_idx, max_depth
+        )
+        futures[future] = game_idx
+    torch.cuda.empty_cache()
 
-        for future in tqdm(as_completed(futures), total=len(futures)):
-            process_index = futures[future]
-            try:
-                file_name, state_idx = future.result()
-                tqdm.write(
-                    f"game {process_index} completed with {state_idx} moves, and the file {file_name}"
-                )
-            except Exception as e:
-                tqdm.write(f"game {process_index} failed with error: {e}")
+    for future in tqdm(as_completed(futures), total=len(futures)):
+        process_index = futures[future]
+        try:
+            file_name, state_idx = future.result()
+            tqdm.write(
+                f"game {process_index} completed with {state_idx} moves, and the file {file_name}"
+            )
+        except Exception as e:
+            tqdm.write(f"game {process_index} failed with error: {e}")
 
 
 def generate_data_and_train_network(
@@ -386,14 +388,15 @@ def play_game():
     player = PUCTPlayer()
     game = Abalone(True)
     print(game.to_string())
+    
     while game.status == ONGOING:
         move = player.get_move(game)
-        row, col, dir_num = move
-        game.make_move(row, col, dir_num)
+        game.make_move(move)
         print(game.to_string())
 
     print(f"winner is {game.status}")
 
 
 if __name__ == "__main__":
-    generate_data_and_train_network(2, 5, 10, 5)
+    play_game()
+    # generate_data_and_train_network(2, 5, 10, 5)

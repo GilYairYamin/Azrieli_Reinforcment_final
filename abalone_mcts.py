@@ -275,7 +275,7 @@ def simulate_game(game_id, max_game_length: int = 500):
         df.loc[idx, "final_status"] = final_status
         final_status = -final_status
 
-    file_name = f"game{game_id}_{readable_time}.pickle"
+    file_name = f"game-{game_id}_{readable_time}.pickle"
     file_path = os.path.join(data_dir, file_name)
     df.to_pickle(file_path)
     return file_name, state_idx
@@ -283,6 +283,7 @@ def simulate_game(game_id, max_game_length: int = 500):
 
 def run_simulations_in_parallel(num_processes: int, num_games: int):
     futures = {}
+
     with ProcessPoolExecutor(max_workers=num_processes) as executor:
         for game_idx in range(num_games):
             future = executor.submit(simulate_game, game_idx, 500)

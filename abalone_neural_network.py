@@ -6,29 +6,29 @@ import torch
 import torch.nn as nn
 
 # import torch.optim as optim
-from abalone import TECHNIAL_MOVE_AMOUNT, VALID_BOARD_MASK
+from abalone import TECHNIAL_MOVE_AMOUNT, VALID_BOARD_MASK, Abalone
 
 
 def convert_encoded_board_to_tensors(
-    board_state, legal_moves_mask, single_state=False
+    board_state, legal_moves_mask, single_state=False, device=None
 ):
+    if device is None:
+        device = torch.device("cpu")
+
     board, black_captures, white_captures, player = board_state
-
-    board_tensor = torch.tensor(board, dtype=torch.float64)
-
+    board_tensor = torch.tensor(board, dtype=torch.float64, device=device)
     extra_arr = np.array(
-        [black_captures, white_captures, player], dtype=np.float64
+        [black_captures, white_captures, player],
+        dtype=np.float64,
     )
-    extra_tensor = torch.tensor(
-        extra_arr, device=board_tensor.device, dtype=torch.float64
-    )
+    extra_tensor = torch.tensor(extra_arr, dtype=torch.float64, device=device)
 
     if single_state:
         board_tensor = board_tensor.unsqueeze(0)
         extra_tensor = extra_tensor.unsqueeze(0)
 
     legal_move_tensor = torch.tensor(
-        legal_moves_mask, device=board_tensor.device, dtype=torch.bool
+        legal_moves_mask, dtype=torch.bool, device=device
     )
     return board_tensor, extra_tensor, legal_move_tensor
 
@@ -41,35 +41,34 @@ class AbaloneNetwork(nn.Module):
 
     def __init__(self, load_model: bool = True):
         super(AbaloneNetwork, self).__init__()
-
         self.board_mask = VALID_BOARD_MASK.copy().flatten()
         num_valid_cells = self.board_mask.sum().item()
 
         self.conv1 = nn.Conv2d(
-            2, 2, 3, stride=1, padding=1, dtype=torch.float64
-        )
-        self.conv2 = nn.Conv2d(
             2, 4, 3, stride=1, padding=1, dtype=torch.float64
         )
-        self.conv3 = nn.Conv2d(
+        self.conv2 = nn.Conv2d(
             4, 8, 3, stride=1, padding=1, dtype=torch.float64
         )
-        self.conv4 = nn.Conv2d(
+        self.conv3 = nn.Conv2d(
             8, 16, 3, stride=1, padding=1, dtype=torch.float64
         )
+        self.conv4 = nn.Conv2d(
+            16, 32, 3, stride=1, padding=1, dtype=torch.float64
+        )
 
-        self.fc1 = nn.Linear(num_valid_cells * 16, 128, dtype=torch.float64)
-        self.fc2 = nn.Linear(128 + 3, 256, dtype=torch.float64)
-        self.fc3 = nn.Linear(256, 128, dtype=torch.float64)
+        self.fc1 = nn.Linear(num_valid_cells * 32, 256, dtype=torch.float64)
+        self.fc2 = nn.Linear(256 + 3, 256, dtype=torch.float64)
+        self.fc3 = nn.Linear(256, 256, dtype=torch.float64)
         self.relu = nn.ReLU()
 
         self.policy_head = nn.Linear(
-            128, TECHNIAL_MOVE_AMOUNT, dtype=torch.float64
+            256, TECHNIAL_MOVE_AMOUNT, dtype=torch.float64
         )
-        
+
         self.softmax = nn.Softmax(dim=-1)
 
-        self.value_head = nn.Linear(128, 1, dtype=torch.float64)
+        self.value_head = nn.Linear(256, 1, dtype=torch.float64)
         self.tanh = nn.Tanh()
 
         if load_model:
@@ -83,7 +82,7 @@ class AbaloneNetwork(nn.Module):
         x = self.relu(self.conv4(x))
 
         batch_size = x.size(0)
-        x = x.view(batch_size, 16, -1)
+        x = x.view(batch_size, 32, -1)
         x = x[:, :, self.board_mask]
         x = x.flatten(start_dim=1)
         x = self.relu(self.fc1(x))
@@ -125,15 +124,30 @@ class AbaloneNetwork(nn.Module):
 
 # בדיקה בסיסית
 if __name__ == "__main__":
-    # model = AbaloneNetwork()
+    model = AbaloneNetwork()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # game = Abalone(True)
+    model = model.to(device)
 
-    # policy, value = model.forward()
+    game = Abalone(True)
+    board_state = game.encode()
 
-    # print("Policy Output Shape:", policy.shape)
-    # print("Value Output:", value)
+    board_tensor, extra_tensor, legal_move_tensor = (
+        convert_encoded_board_to_tensors(
+            board_state,
+            game.get_legal_moves_mask(),
+            single_state=True,
+            device=device,
+        )
+    )
 
-    # print(policy[0].item())
-    # model.save_model()
+    policy, value = model.forward(
+        board_tensor, extra_tensor, legal_move_tensor
+    )
+
+    print("Policy Output Shape:", policy.shape)
+    print("Value Output:", value)
+
+    print(policy.cpu().detach().numpy().flatten())
+    model.save_model()
     pass

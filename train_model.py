@@ -31,6 +31,7 @@ class AbaloneDataset(Dataset):
         board_tensor, extra_tensor, legal_move_tensor = (
             convert_encoded_board_to_tensors(board_state, legal_move_mask)
         )
+
         target_policy = torch.tensor(target_policy, dtype=torch.float64)
         target_value = torch.tensor([target_value], dtype=torch.float64)
 
@@ -48,16 +49,12 @@ def train_network(
     dataloader,
     num_epochs=10,
     learning_rate=1e-3,
-    device="cpu",
 ):
-    # Move the model to the desired device
-    model.to(device)
-    # Set the model in training mode
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
     model.train()
 
-    # Create an optimizer
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-
     mse_loss = nn.MSELoss()
 
     for epoch in tqdm(range(num_epochs), desc="epochs"):
@@ -78,13 +75,9 @@ def train_network(
             target_value = target_value.to(device)
 
             optimizer.zero_grad()
-
             policy, value = model(board_tensor, extra_tensor, legal_move_mask)
-
             policy_loss = -torch.sum(target_policy * torch.log(policy + 1e-8))
-
             value_loss = mse_loss(value, target_value)
-
             loss = policy_loss + value_loss
 
             loss.backward()
@@ -99,13 +92,12 @@ def train_network(
     return model
 
 
-def train_on_pickle_files(
+def train_on_pickle_files_folder(
     model,
     data_folder,
     batch_size=32,
     num_epochs=5,
     learning_rate=1e-2,
-    device="cpu",
 ):
     pickle_files = [
         os.path.join(data_folder, f)
@@ -114,7 +106,6 @@ def train_on_pickle_files(
     ]
 
     for pickle_file in tqdm(pickle_files, desc="files"):
-        # tqdm.write(f"\nTraining on file: {pickle_file}\n")
         dataset = AbaloneDataset(pickle_file)
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         model = train_network(
@@ -122,26 +113,44 @@ def train_on_pickle_files(
             dataloader,
             num_epochs=num_epochs,
             learning_rate=learning_rate,
-            device=device,
         )
     return model
 
 
-def pre_train_model(data_folder):
-    model = AbaloneNetwork(load_model=True)
+def train_on_pickle_file(
+    data_file_full_path,
+    batch_size=32,
+    num_epochs=5,
+    learning_rate=1e-2,
+):
+    model = AbaloneNetwork()
+    dataset = AbaloneDataset(data_file_full_path)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    trained_model = train_network(
+        model,
+        dataloader,
+        num_epochs=num_epochs,
+        learning_rate=learning_rate,
+    )
 
-    trained_model = train_on_pickle_files(
+    torch.cuda.empty_cache()
+    return trained_model
+
+
+def pre_train_model(data_folder):
+    model = AbaloneNetwork()
+    trained_model = train_on_pickle_files_folder(
         model,
         data_folder,
         batch_size=32,
         num_epochs=5,
         learning_rate=1e-2,
-        device="cuda",
     )
-
     trained_model.save_model()
 
 
 if __name__ == "__main__":
-    res_data_folder = os.path.join(os.getcwd(), "local_data", "training data")
+    res_data_folder = os.path.join(
+        os.getcwd(), "local_data", "pre-training data"
+    )
     pre_train_model(res_data_folder)
